@@ -1,3 +1,4 @@
+export const dynamic = "force-static";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";

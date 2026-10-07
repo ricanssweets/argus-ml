@@ -1,3 +1,4 @@
+export const dynamic = "force-static";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { api } from "@/lib/api";
