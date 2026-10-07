@@ -93,7 +93,7 @@ export default async function MarketRegimePage() {
           <ul className="space-y-3">
             {r.drivers.map((d, i) => (
               <li key={i} className="flex gap-3 text-sm text-slate-300">
-                <span className="font-mono text-sky-400">
+                <span className="font-mono text-bronze-400">
                   {String(i + 1).padStart(2, "0")}
                 </span>
                 {d}

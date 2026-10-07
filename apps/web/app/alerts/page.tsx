@@ -90,7 +90,7 @@ export default function AlertsPage() {
           />
           <button
             onClick={create}
-            className="rounded-lg bg-sky-600 px-5 py-2 text-sm font-semibold text-white hover:bg-sky-500"
+            className="rounded-lg bg-bronze-600 px-5 py-2 text-sm font-semibold text-white hover:bg-bronze-500"
           >
             Create rule
           </button>

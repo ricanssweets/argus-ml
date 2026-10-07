@@ -9,12 +9,34 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // Charcoal — brand dark neutrals
         ink: {
-          950: "#0a0e14",
-          900: "#0f141d",
-          850: "#141b26",
-          800: "#1a2230",
-          700: "#243041",
+          950: "#0d0d0f",
+          900: "#141416",
+          850: "#1a1a1e",
+          800: "#232328",
+          700: "#313138",
+        },
+        // Bronze — brand primary accent
+        bronze: {
+          200: "#e8c9a0",
+          300: "#d9ae7e",
+          400: "#c99763",
+          500: "#bd8250",
+          600: "#a56e40",
+          700: "#855834",
+        },
+        // Deep Teal — brand secondary
+        teal: {
+          700: "#175049",
+          800: "#123e39",
+          900: "#0d2f2c",
+        },
+        // Stone — brand light neutral
+        stone: {
+          100: "#f2ede1",
+          200: "#e9e2d5",
+          300: "#d8cfbc",
         },
       },
     },

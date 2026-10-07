@@ -61,7 +61,7 @@ export default function ResearchLabPage() {
           <button
             onClick={() => ask(q)}
             disabled={loading}
-            className="rounded-lg bg-sky-600 px-5 py-2 text-sm font-semibold text-white hover:bg-sky-500 disabled:opacity-50"
+            className="rounded-lg bg-bronze-600 px-5 py-2 text-sm font-semibold text-white hover:bg-bronze-500 disabled:opacity-50"
           >
             {loading ? "…" : "Ask"}
           </button>
@@ -71,7 +71,7 @@ export default function ResearchLabPage() {
             <button
               key={ex}
               onClick={() => ask(ex)}
-              className="rounded-full border border-ink-700 px-3 py-1 text-xs text-slate-400 hover:border-sky-600 hover:text-slate-200"
+              className="rounded-full border border-ink-700 px-3 py-1 text-xs text-slate-400 hover:border-bronze-600 hover:text-slate-200"
             >
               {ex.length > 64 ? ex.slice(0, 64) + "…" : ex}
             </button>

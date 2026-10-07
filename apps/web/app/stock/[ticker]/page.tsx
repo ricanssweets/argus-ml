@@ -30,7 +30,7 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-ink-700">
         <div
-          className="h-full rounded-full bg-sky-500"
+          className="h-full rounded-full bg-bronze-500"
           style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
         />
       </div>
@@ -164,7 +164,7 @@ export default async function StockPage({
             subtitle={`Model ${p20.model_version} · regime ${p20.regime}`}
           >
             <div className="mb-5 flex items-center gap-5">
-              <div className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-sky-500">
+              <div className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-bronze-500">
                 <span className="font-mono text-3xl font-bold text-white">
                   {score0(p20.composite_score)}
                 </span>
@@ -241,7 +241,7 @@ export default async function StockPage({
             <tr
               key={p.horizon}
               className={`hover:bg-ink-800/50 ${
-                p.horizon === 20 ? "bg-sky-600/5" : ""
+                p.horizon === 20 ? "bg-bronze-600/5" : ""
               }`}
             >
               <Td className="font-medium text-slate-200">

@@ -95,7 +95,7 @@ export default async function ModelsPage() {
               <tr key={i} className="hover:bg-ink-800/50">
                 <Td className="font-mono text-slate-400">{i + 1}</Td>
                 <Td className="font-mono text-slate-200">{pct(b.mean_predicted ?? b.predicted)}</Td>
-                <Td className="font-mono text-sky-300">{pct(b.observed_rate ?? b.observed)}</Td>
+                <Td className="font-mono text-bronze-300">{pct(b.observed_rate ?? b.observed)}</Td>
                 <Td className="font-mono text-slate-400">
                   {b.n.toLocaleString()}
                 </Td>

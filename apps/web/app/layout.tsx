@@ -3,9 +3,9 @@ import { Sidebar } from "@/components/Sidebar";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ARGUS — AI Stock & ETF Prediction Platform",
+  title: "ARGUS — Vision Builds Better Decisions",
   description:
-    "Institutional-grade calibrated predictions for stocks and ETFs.",
+    "Analytics / Insights / Action. Institutional-grade calibrated predictions for stocks and ETFs.",
 };
 
 export default function RootLayout({

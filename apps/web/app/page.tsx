@@ -30,7 +30,12 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+          <h1 className="text-2xl font-bold tracking-wide text-stone-100">
+            Dashboard
+          </h1>
+          <p className="mt-1 text-sm text-bronze-400/90">
+            Vision builds better decisions
+          </p>
           <p className="mt-1 text-sm text-slate-500">
             Data as-of {fmtDateTime(regime.meta.as_of)} UTC · status{" "}
             {regime.meta.data_status}
@@ -58,7 +63,7 @@ export default async function DashboardPage() {
           </div>
           <Link
             href="/market-regime"
-            className="text-sm font-medium text-sky-400 hover:text-sky-300"
+            className="text-sm font-medium text-bronze-400 hover:text-bronze-300"
           >
             Regime detail →
           </Link>
@@ -66,7 +71,7 @@ export default async function DashboardPage() {
         <ul className="mt-4 grid gap-2 md:grid-cols-2">
           {regime.data.drivers.map((d, i) => (
             <li key={i} className="text-sm text-slate-400">
-              <span className="mr-2 text-sky-400">▸</span>
+              <span className="mr-2 text-bronze-400">▸</span>
               {d}
             </li>
           ))}
@@ -82,7 +87,7 @@ export default async function DashboardPage() {
           action={
             <Link
               href="/market-scanner"
-              className="text-sm font-medium text-sky-400 hover:text-sky-300"
+              className="text-sm font-medium text-bronze-400 hover:text-bronze-300"
             >
               Scanner →
             </Link>
@@ -103,7 +108,7 @@ export default async function DashboardPage() {
                 <Td>
                   <Link
                     href={`/stock/${s.ticker}`}
-                    className="font-semibold text-sky-400 hover:text-sky-300"
+                    className="font-semibold text-bronze-400 hover:text-bronze-300"
                   >
                     {s.ticker}
                   </Link>
@@ -130,7 +135,7 @@ export default async function DashboardPage() {
           action={
             <Link
               href="/models"
-              className="text-sm font-medium text-sky-400 hover:text-sky-300"
+              className="text-sm font-medium text-bronze-400 hover:text-bronze-300"
             >
               Observatory →
             </Link>
@@ -179,7 +184,7 @@ export default async function DashboardPage() {
         action={
           <Link
             href="/predictions"
-            className="text-sm font-medium text-sky-400 hover:text-sky-300"
+            className="text-sm font-medium text-bronze-400 hover:text-bronze-300"
           >
             All predictions →
           </Link>
@@ -201,7 +206,7 @@ export default async function DashboardPage() {
               <Td>
                 <Link
                   href={`/stock/${p.ticker}`}
-                  className="font-semibold text-sky-400 hover:text-sky-300"
+                  className="font-semibold text-bronze-400 hover:text-bronze-300"
                 >
                   {p.ticker}
                 </Link>

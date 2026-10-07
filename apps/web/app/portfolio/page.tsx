@@ -76,7 +76,7 @@ export default function PortfolioPage() {
         <button
           onClick={analyze}
           disabled={loading}
-          className="mt-3 rounded-lg bg-sky-600 px-5 py-2 text-sm font-semibold text-white hover:bg-sky-500 disabled:opacity-50"
+          className="mt-3 rounded-lg bg-bronze-600 px-5 py-2 text-sm font-semibold text-white hover:bg-bronze-500 disabled:opacity-50"
         >
           {loading ? "Analyzing…" : "Analyze portfolio"}
         </button>

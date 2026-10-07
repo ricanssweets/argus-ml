@@ -31,7 +31,7 @@ function Field({
 }
 
 const inputCls =
-  "w-full rounded-lg border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-slate-200 focus:border-sky-500 focus:outline-none";
+  "w-full rounded-lg border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-slate-200 focus:border-bronze-500 focus:outline-none";
 
 export default function BacktestingPage() {
   const [cfg, setCfg] = useState<BacktestConfig>(DEFAULT_BACKTEST_CONFIG);
@@ -150,7 +150,7 @@ export default function BacktestingPage() {
               type="checkbox"
               checked={cfg.allow_short}
               onChange={(e) => set("allow_short", e.target.checked)}
-              className="h-4 w-4 accent-sky-600"
+              className="h-4 w-4 accent-bronze-600"
             />
             Allow short
           </label>
