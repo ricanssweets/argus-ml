@@ -1,0 +1,197 @@
+{
+ "version": "ARGUS-EQ-1.1",
+ "horizon": 1,
+ "method": "isotonic (sklearn), fit on OOF only",
+ "fitted_at": "2026-10-06T19:51:06.272910+00:00",
+ "min_samples_per_bucket": 20,
+ "n_oof": 1017,
+ "brier_before": 0.267722,
+ "brier_after": 0.245892,
+ "maps": {
+  "global": {
+   "x": [
+    0.245817,
+    0.260162,
+    0.260203,
+    0.690105,
+    0.690125,
+    0.713865,
+    0.714509,
+    0.749515,
+    0.753697,
+    0.769286
+   ],
+   "y": [
+    0.25,
+    0.25,
+    0.536285,
+    0.536285,
+    0.571429,
+    0.571429,
+    0.642857,
+    0.642857,
+    1.0,
+    1.0
+   ],
+   "n": 1017,
+   "brier_before": 0.267722,
+   "brier_after": 0.245892,
+   "calibrated": true,
+   "reason": ""
+  },
+  "Bull": {
+   "x": [
+    0.267558,
+    0.2895,
+    0.504148,
+    0.508178,
+    0.6931,
+    0.69367,
+    0.696117,
+    0.696126,
+    0.709416,
+    0.714509,
+    0.741779,
+    0.743147,
+    0.769286
+   ],
+   "y": [
+    0.0,
+    0.461538,
+    0.461538,
+    0.550847,
+    0.550847,
+    0.6,
+    0.6,
+    0.625,
+    0.625,
+    0.727273,
+    0.727273,
+    1.0,
+    1.0
+   ],
+   "n": 180,
+   "brier_before": 0.256916,
+   "brier_after": 0.237713,
+   "calibrated": true,
+   "reason": "",
+   "fallback": false
+  },
+  "Crisis": {
+   "fallback": true,
+   "n": 21,
+   "calibrated": false,
+   "reason": "n=21 < 50; thin regime -- no own map; global map not applied to this slice (uncalibrated)"
+  },
+  "High Vol": {
+   "x": [
+    0.264816,
+    0.595271,
+    0.599157,
+    0.666865,
+    0.668046,
+    0.681455,
+    0.686227,
+    0.708265,
+    0.710069,
+    0.743272
+   ],
+   "y": [
+    0.382353,
+    0.382353,
+    0.454545,
+    0.454545,
+    0.666667,
+    0.666667,
+    0.875,
+    0.875,
+    1.0,
+    1.0
+   ],
+   "n": 60,
+   "brier_before": 0.241606,
+   "brier_after": 0.204973,
+   "calibrated": true,
+   "reason": "",
+   "fallback": false
+  },
+  "Low Vol": {
+   "fallback": true,
+   "n": 3,
+   "calibrated": false,
+   "reason": "n=3 < 50; thin regime -- no own map; global map not applied to this slice (uncalibrated)"
+  },
+  "Neutral": {
+   "x": [
+    0.246526,
+    0.306994,
+    0.316419,
+    0.690518,
+    0.691088,
+    0.749445
+   ],
+   "y": [
+    0.0,
+    0.0,
+    0.5311,
+    0.5311,
+    0.673469,
+    0.673469
+   ],
+   "n": 264,
+   "brier_before": 0.263596,
+   "brier_after": 0.237967,
+   "calibrated": true,
+   "reason": "",
+   "fallback": false
+  },
+  "Risk-Off": {
+   "x": [
+    0.245817,
+    0.334598,
+    0.337324,
+    0.681771
+   ],
+   "y": [
+    0.5625,
+    0.5625,
+    0.578947,
+    0.578947
+   ],
+   "n": 54,
+   "brier_before": 0.315598,
+   "brier_after": 0.244457,
+   "calibrated": true,
+   "reason": "",
+   "fallback": false
+  },
+  "Strong Bull": {
+   "x": [
+    0.272445,
+    0.334938,
+    0.343095,
+    0.723474,
+    0.724399,
+    0.749515,
+    0.753697,
+    0.762572
+   ],
+   "y": [
+    0.25,
+    0.25,
+    0.536058,
+    0.536058,
+    0.666667,
+    0.666667,
+    1.0,
+    1.0
+   ],
+   "n": 435,
+   "brier_before": 0.272688,
+   "brier_after": 0.245691,
+   "calibrated": true,
+   "reason": "",
+   "fallback": false
+  }
+ }
+}

@@ -1,0 +1,218 @@
+{
+  "version": "ARGUS-EQ-1.1",
+  "status": "LEARNED 2026-10-06 - regime-conditioned, honest OOF",
+  "description": "Versioned ensemble weight registry for ARGUS-EQ-1.1. Per-regime engine weights learned from out-of-fold engine signals on real data (horizon 20d). Engines are parameter-free so signals are OOF by construction. Regimes with < 20 OOF samples fall back to global weights (learned=false). Where learned weights did not beat equal-weight OOF, priors (equal weight) were kept. ARGUS-EQ-1.0 is untouched history.",
+  "horizons": [
+    20
+  ],
+  "engines": {
+    "A": "Technical",
+    "B": "Factors",
+    "C": "Fundamentals",
+    "D": "Macro",
+    "E": "Regime",
+    "F": "Options",
+    "G": "Sentiment",
+    "H": "CrossAsset"
+  },
+  "engine_availability": {
+    "Technical": true,
+    "Factors": true,
+    "Fundamentals": false,
+    "Macro": false,
+    "Regime": false,
+    "Options": false,
+    "Sentiment": false,
+    "CrossAsset": true
+  },
+  "engine_availability_note": "C needs point-in-time fundamentals; D/F/G are stubs pending later phases. Unavailable engines get weight 0 - never fabricated.",
+  "global_fallback_weights": {
+    "Technical": 0.3333,
+    "Factors": 0.3333,
+    "Fundamentals": 0.0,
+    "Macro": 0.0,
+    "Regime": 0.0,
+    "Options": 0.0,
+    "Sentiment": 0.0,
+    "CrossAsset": 0.3333
+  },
+  "global_n_samples": 6716,
+  "global_note": "no grid combo beat equal-weight OOF by >= 0.01 AUC (best 0.5356 vs eq 0.5274); priors (equal weight) kept",
+  "global_oof_auc": 0.5356,
+  "global_oof_brier": 0.2516,
+  "regimes": {
+    "Strong Bull": {
+      "weights": {
+        "Technical": 0.3333,
+        "Factors": 0.3333,
+        "Fundamentals": 0.0,
+        "Macro": 0.0,
+        "Regime": 0.0,
+        "Options": 0.0,
+        "Sentiment": 0.0,
+        "CrossAsset": 0.3333
+      },
+      "n_samples": 2744,
+      "learned": false,
+      "note": "no grid combo beat equal-weight OOF by >= 0.01 AUC (best 0.5291 vs eq 0.5059); priors (equal weight) kept",
+      "oof_auc": 0.5291,
+      "oof_brier": 0.2531,
+      "equal_weight_oof_auc": 0.5059,
+      "equal_weight_oof_brier": 0.2427
+    },
+    "Bull": {
+      "weights": {
+        "Technical": 0.3333,
+        "Factors": 0.3333,
+        "Fundamentals": 0.0,
+        "Macro": 0.0,
+        "Regime": 0.0,
+        "Options": 0.0,
+        "Sentiment": 0.0,
+        "CrossAsset": 0.3333
+      },
+      "n_samples": 1332,
+      "learned": false,
+      "note": "no grid combo beat equal-weight OOF by >= 0.01 AUC (best 0.5531 vs eq 0.5391); priors (equal weight) kept",
+      "oof_auc": 0.5531,
+      "oof_brier": 0.2493,
+      "equal_weight_oof_auc": 0.5391,
+      "equal_weight_oof_brier": 0.2331
+    },
+    "Neutral": {
+      "weights": {
+        "Technical": 0.3333,
+        "Factors": 0.3333,
+        "Fundamentals": 0.0,
+        "Macro": 0.0,
+        "Regime": 0.0,
+        "Options": 0.0,
+        "Sentiment": 0.0,
+        "CrossAsset": 0.3333
+      },
+      "n_samples": 1648,
+      "learned": false,
+      "note": "no grid combo beat equal-weight OOF by >= 0.01 AUC (best 0.5738 vs eq 0.5616); priors (equal weight) kept",
+      "oof_auc": 0.5738,
+      "oof_brier": 0.2468,
+      "equal_weight_oof_auc": 0.5616,
+      "equal_weight_oof_brier": 0.2445
+    },
+    "Risk-Off": {
+      "weights": {
+        "Technical": 1.0,
+        "Factors": 0.0,
+        "Fundamentals": 0.0,
+        "Macro": 0.0,
+        "Regime": 0.0,
+        "Options": 0.0,
+        "Sentiment": 0.0,
+        "CrossAsset": 0.0
+      },
+      "n_samples": 388,
+      "learned": true,
+      "note": "grid-search beat equal-weight OOF (AUC 0.5626 vs 0.4529, Brier 0.2570 vs 0.2682)",
+      "oof_auc": 0.5626,
+      "oof_brier": 0.257,
+      "equal_weight_oof_auc": 0.4529,
+      "equal_weight_oof_brier": 0.2682
+    },
+    "Bear": {
+      "weights": {
+        "Technical": 0.3333,
+        "Factors": 0.3333,
+        "Fundamentals": 0.0,
+        "Macro": 0.0,
+        "Regime": 0.0,
+        "Options": 0.0,
+        "Sentiment": 0.0,
+        "CrossAsset": 0.3333
+      },
+      "n_samples": 0,
+      "learned": false,
+      "note": "only 0 OOF samples (< 20 MIN_SAMPLES_PER_BUCKET) - fell back to global weights",
+      "oof_auc": null,
+      "oof_brier": null,
+      "equal_weight_oof_auc": null,
+      "equal_weight_oof_brier": null
+    },
+    "Crisis": {
+      "weights": {
+        "Technical": 0.3333,
+        "Factors": 0.3333,
+        "Fundamentals": 0.0,
+        "Macro": 0.0,
+        "Regime": 0.0,
+        "Options": 0.0,
+        "Sentiment": 0.0,
+        "CrossAsset": 0.3333
+      },
+      "n_samples": 156,
+      "learned": false,
+      "note": "no grid combo beat equal-weight OOF by >= 0.01 AUC (best 0.5437 vs eq 0.3455); priors (equal weight) kept",
+      "oof_auc": 0.5437,
+      "oof_brier": 0.3431,
+      "equal_weight_oof_auc": 0.3455,
+      "equal_weight_oof_brier": 0.2837
+    },
+    "High Vol": {
+      "weights": {
+        "Technical": 0.3333,
+        "Factors": 0.3333,
+        "Fundamentals": 0.0,
+        "Macro": 0.0,
+        "Regime": 0.0,
+        "Options": 0.0,
+        "Sentiment": 0.0,
+        "CrossAsset": 0.3333
+      },
+      "n_samples": 440,
+      "learned": false,
+      "note": "no grid combo beat equal-weight OOF by >= 0.01 AUC (best 0.5551 vs eq 0.5375); priors (equal weight) kept",
+      "oof_auc": 0.5551,
+      "oof_brier": 0.3252,
+      "equal_weight_oof_auc": 0.5375,
+      "equal_weight_oof_brier": 0.2657
+    },
+    "Low Vol": {
+      "weights": {
+        "Technical": 0.3333,
+        "Factors": 0.3333,
+        "Fundamentals": 0.0,
+        "Macro": 0.0,
+        "Regime": 0.0,
+        "Options": 0.0,
+        "Sentiment": 0.0,
+        "CrossAsset": 0.3333
+      },
+      "n_samples": 8,
+      "learned": false,
+      "note": "only 8 OOF samples (< 20 MIN_SAMPLES_PER_BUCKET) - fell back to global weights",
+      "oof_auc": null,
+      "oof_brier": null,
+      "equal_weight_oof_auc": null,
+      "equal_weight_oof_brier": null
+    }
+  },
+  "method": {
+    "signals": "engines A/B/H at each date t using bars <= t only",
+    "label": "1{20d forward return > 0} (horizon 20d)",
+    "probability_mapping": "p = sum_i w_i * (signal_i + 1) / 2",
+    "search": "simplex grid step 0.05 (231 combos, fixed order)",
+    "objective": "max OOF AUC, tie-break min OOF Brier",
+    "accept_rule": "accept learned iff AUC >= equal-weight AUC + 0.01 and Brier <= equal-weight Brier + 0.002; else keep equal-weight priors",
+    "min_samples_per_bucket": 20,
+    "tickers": [
+      "NVDA",
+      "AAPL",
+      "MSFT",
+      "SPY"
+    ],
+    "data_from": "2020-01-02",
+    "data_to": "2026-09-08",
+    "regime_source": "data/regime_history.csv (argus_quant.regime, rule-based)"
+  },
+  "promotion_policy": "No silent auto-promotion. A challenger replaces these weights only after statistically significant out-of-sample improvement (paired test, p < 0.05) plus a calibration check.",
+  "min_samples_per_bucket": 20,
+  "fitted_at": "2026-10-06T17:59:56Z"
+}

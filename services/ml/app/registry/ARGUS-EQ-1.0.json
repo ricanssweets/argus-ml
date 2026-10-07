@@ -1,0 +1,699 @@
+{
+  "version": "ARGUS-EQ-1.0",
+  "status": "PRIORS \u2014 pending walk-forward learning",
+  "description": "Versioned ensemble weight registry for ARGUS-EQ-1.0. Per-horizon, per-regime engine weights. Values below are the ARCHITECTURE.md \u00a75 priors (initial values, not constants). They MUST be replaced by weights learned from out-of-sample walk-forward backtests before any production use; rows with learned=false are priors.",
+  "engine_priors": {
+    "Technical": 0.2,
+    "Momentum": 0.15,
+    "Fundamentals": 0.15,
+    "Valuation": 0.1,
+    "Macro": 0.1,
+    "Regime": 0.1,
+    "Options": 0.1,
+    "Sentiment": 0.05,
+    "Liquidity": 0.05
+  },
+  "regimes": [
+    "Bull",
+    "Bear",
+    "Sideways",
+    "HighVol",
+    "Crisis"
+  ],
+  "horizons": {
+    "1": {
+      "regimes": {
+        "Bull": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Bear": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Sideways": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "HighVol": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Crisis": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        }
+      }
+    },
+    "3": {
+      "regimes": {
+        "Bull": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Bear": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Sideways": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "HighVol": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Crisis": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        }
+      }
+    },
+    "5": {
+      "regimes": {
+        "Bull": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Bear": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Sideways": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "HighVol": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Crisis": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        }
+      }
+    },
+    "10": {
+      "regimes": {
+        "Bull": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Bear": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Sideways": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "HighVol": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Crisis": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        }
+      }
+    },
+    "20": {
+      "regimes": {
+        "Bull": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Bear": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Sideways": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "HighVol": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Crisis": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        }
+      }
+    },
+    "63": {
+      "regimes": {
+        "Bull": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Bear": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Sideways": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "HighVol": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Crisis": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        }
+      }
+    },
+    "126": {
+      "regimes": {
+        "Bull": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Bear": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Sideways": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "HighVol": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Crisis": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        }
+      }
+    },
+    "252": {
+      "regimes": {
+        "Bull": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Bear": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Sideways": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "HighVol": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        },
+        "Crisis": {
+          "engines": {
+            "Technical": 0.2,
+            "Momentum": 0.15,
+            "Fundamentals": 0.15,
+            "Valuation": 0.1,
+            "Macro": 0.1,
+            "Regime": 0.1,
+            "Options": 0.1,
+            "Sentiment": 0.05,
+            "Liquidity": 0.05
+          },
+          "learned": false,
+          "fitted_at": null,
+          "n_oos_samples": 0
+        }
+      }
+    }
+  },
+  "promotion_policy": "No silent auto-promotion. A challenger replaces these weights only after statistically significant out-of-sample improvement (paired test, p < 0.05) plus a calibration check.",
+  "min_samples_per_bucket": 20
+}

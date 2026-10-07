@@ -1,0 +1,175 @@
+{
+ "version": "ARGUS-EQ-1.1",
+ "horizon": 252,
+ "method": "isotonic (sklearn), fit on OOF only",
+ "fitted_at": "2026-10-06T19:51:06.272910+00:00",
+ "min_samples_per_bucket": 20,
+ "n_oof": 867,
+ "brier_before": 0.229226,
+ "brier_after": 0.141712,
+ "maps": {
+  "global": {
+   "x": [
+    0.245817,
+    0.260203,
+    0.692734,
+    0.6931,
+    0.707292,
+    0.707377,
+    0.71191,
+    0.71211,
+    0.745963,
+    0.749445,
+    0.769286
+   ],
+   "y": [
+    0.0,
+    0.815864,
+    0.815864,
+    0.818182,
+    0.818182,
+    0.833333,
+    0.833333,
+    0.949153,
+    0.949153,
+    1.0,
+    1.0
+   ],
+   "n": 867,
+   "brier_before": 0.229226,
+   "brier_after": 0.141712,
+   "calibrated": true,
+   "reason": ""
+  },
+  "Bull": {
+   "x": [
+    0.359455,
+    0.666953,
+    0.671371,
+    0.705665,
+    0.707557,
+    0.743147,
+    0.743432,
+    0.769286
+   ],
+   "y": [
+    0.827586,
+    0.827586,
+    0.925926,
+    0.925926,
+    0.928571,
+    0.928571,
+    1.0,
+    1.0
+   ],
+   "n": 159,
+   "brier_before": 0.198984,
+   "brier_after": 0.121586,
+   "calibrated": true,
+   "reason": "",
+   "fallback": false
+  },
+  "Crisis": {
+   "fallback": true,
+   "n": 21,
+   "calibrated": false,
+   "reason": "n=21 < 50; thin regime -- no own map; global map not applied to this slice (uncalibrated)"
+  },
+  "High Vol": {
+   "x": [
+    0.264816,
+    0.62096,
+    0.630033,
+    0.666865,
+    0.668046,
+    0.743272
+   ],
+   "y": [
+    0.783784,
+    0.783784,
+    0.875,
+    0.875,
+    1.0,
+    1.0
+   ],
+   "n": 60,
+   "brier_before": 0.247803,
+   "brier_after": 0.119088,
+   "calibrated": true,
+   "reason": "",
+   "fallback": false
+  },
+  "Low Vol": {
+   "fallback": true,
+   "n": 3,
+   "calibrated": false,
+   "reason": "n=3 < 50; thin regime -- no own map; global map not applied to this slice (uncalibrated)"
+  },
+  "Neutral": {
+   "x": [
+    0.2994,
+    0.688765,
+    0.68928,
+    0.749445
+   ],
+   "y": [
+    0.846561,
+    0.846561,
+    1.0,
+    1.0
+   ],
+   "n": 234,
+   "brier_before": 0.227601,
+   "brier_after": 0.104916,
+   "calibrated": true,
+   "reason": "",
+   "fallback": false
+  },
+  "Risk-Off": {
+   "x": [
+    0.245817,
+    0.269275,
+    0.664682,
+    0.676183,
+    0.681771
+   ],
+   "y": [
+    0.0,
+    0.882353,
+    0.882353,
+    1.0,
+    1.0
+   ],
+   "n": 54,
+   "brier_before": 0.350789,
+   "brier_after": 0.098039,
+   "calibrated": true,
+   "reason": "",
+   "fallback": false
+  },
+  "Strong Bull": {
+   "x": [
+    0.390381,
+    0.71191,
+    0.71211,
+    0.745963,
+    0.749515,
+    0.762572
+   ],
+   "y": [
+    0.737013,
+    0.737013,
+    0.916667,
+    0.916667,
+    1.0,
+    1.0
+   ],
+   "n": 336,
+   "brier_before": 0.220422,
+   "brier_after": 0.183129,
+   "calibrated": true,
+   "reason": "",
+   "fallback": false
+  }
+ }
+}

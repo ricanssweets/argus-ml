@@ -1,0 +1,33 @@
+# Render Blueprint for ARGUS ML API (FastAPI)
+# Usage: Render Dashboard → New → Blueprint → connect repo → this file is auto-detected.
+# Fill the env vars below (all secrets); see docs/DEPLOYMENT_CHECKLIST.md Fase B.
+services:
+  - type: web
+    name: argus-ml
+    runtime: docker
+    dockerfilePath: ./services/ml/Dockerfile
+    dockerContext: .
+    dockerCommand: /usr/local/bin/start.sh
+    healthCheckPath: /health
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false
+      - key: ONESIGNAL_APP_ID
+        sync: false
+      - key: ONESIGNAL_API_KEY
+        sync: false
+      - key: AUTH_DISABLED
+        value: "true"
