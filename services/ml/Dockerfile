@@ -15,6 +15,7 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 COPY packages/quant /tmp/argus-quant
 RUN pip install /tmp/argus-quant && rm -rf /tmp/argus-quant
 COPY services/ml/app ./app
+COPY services/ml/data ./data
 COPY services/ml/start.sh /usr/local/bin/start.sh
 RUN chmod +x /usr/local/bin/start.sh
 

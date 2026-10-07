@@ -22,6 +22,11 @@ log = logging.getLogger("argus.ml.prices")
 DATA_DIR = Path.home() / "workspace" / "argus" / "data" / "raw"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+# Baked-in price snapshots shipped with the Docker image (data/baked/).
+# Used as fallback when the live Yahoo fetch is blocked (e.g. datacenter IP
+# filtering). Refresh by re-running the fetch locally and rebuilding.
+BAKED_DIR = Path(__file__).resolve().parent.parent / "data" / "baked"
+
 UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
                     "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"}
 
@@ -56,14 +61,27 @@ def fetch_yahoo_daily(ticker: str, period1: int | None = None,
     url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{url_ticker}"
            f"?period1={period1}&period2={period2}&interval=1d"
            f"&events=div%2Csplit")
+    live_exc = None
     try:
         req = urllib.request.Request(url, headers=UA)
         with urllib.request.urlopen(req, timeout=60) as r:
             payload = json.load(r)
         res = payload["chart"]["result"][0]
     except Exception as exc:
+        live_exc = exc
+        res = None
+    if res is None:
+        # Live fetch failed (e.g. Yahoo blocking datacenter IPs) — fall back
+        # to the baked snapshot shipped in the image.
+        baked = BAKED_DIR / (t.replace("^", "").upper() + ".csv")
+        if baked.exists():
+            log.warning("Yahoo fetch failed for %s (%s) — using baked snapshot %s",
+                        t, type(live_exc).__name__, baked.name)
+            df = pd.read_csv(baked, index_col=0, parse_dates=True)
+            if not df.empty and "close" in df.columns:
+                return df
         raise PriceFetchError(f"Yahoo fetch failed for {t}: "
-                              f"{type(exc).__name__}") from exc
+                              f"{type(live_exc).__name__}") from live_exc
     ts = pd.to_datetime(res["timestamp"], unit="s", utc=True).tz_convert(
         "America/New_York").tz_localize(None)
     q = res["indicators"]["quote"][0]
