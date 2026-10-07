@@ -48,8 +48,8 @@ def _prediction_or_404(ticker: str, horizon: int) -> Prediction:
     try:
         return _live_prediction(t, horizon)
     except Exception as exc:  # noqa: BLE001 - fall back loudly, never silently
-        log.warning("live pipeline failed for %s h=%s: %s -- stub fallback",
-                    t, horizon, type(exc).__name__)
+        log.warning("live pipeline failed for %s h=%s: %s: %s -- stub fallback",
+                    t, horizon, type(exc).__name__, exc)
     if data_stub.get_asset(t) is None:
         not_found(f"asset {t} not in stub universe")
     if horizon not in data_stub.HORIZONS:
