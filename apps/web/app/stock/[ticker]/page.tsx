@@ -69,6 +69,14 @@ function ExplanationList({
   );
 }
 
+export function generateStaticParams() {
+  // Pre-rendered tickers for `output: export`. The page also works for any
+  // other valid ticker at runtime via client-side navigation.
+  const tickers = ["SPY", "QQQ", "NVDA", "AAPL", "MSFT", "TSLA", "AMZN",
+    "META", "GOOGL", "AMD", "NFLX", "CRM", "ORCL", "AVGO", "COST"];
+  return tickers.map((ticker) => ({ ticker }));
+}
+
 export default async function StockPage({
   params,
 }: {
