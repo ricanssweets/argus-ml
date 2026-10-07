@@ -86,16 +86,16 @@ export default async function ModelsPage() {
           title="Reliability curve — 20-day P(up)"
           subtitle={`${version} · observed frequency vs predicted probability per bucket`}
         >
-          <CalibrationChart buckets={calib.data} />
+          <CalibrationChart buckets={Array.isArray((calib.data as any)?.buckets) ? (calib.data as any).buckets : calib.data} />
           <Table
             className="mt-4"
             head={["Bucket", "Predicted", "Observed", "n"]}
           >
-            {calib.data.map((b, i) => (
+            {(Array.isArray((calib.data as any)?.buckets) ? (calib.data as any).buckets : calib.data).map((b: any, i: number) => (
               <tr key={i} className="hover:bg-ink-800/50">
                 <Td className="font-mono text-slate-400">{i + 1}</Td>
-                <Td className="font-mono text-slate-200">{pct(b.predicted)}</Td>
-                <Td className="font-mono text-sky-300">{pct(b.observed)}</Td>
+                <Td className="font-mono text-slate-200">{pct(b.mean_predicted ?? b.predicted)}</Td>
+                <Td className="font-mono text-sky-300">{pct(b.observed_rate ?? b.observed)}</Td>
                 <Td className="font-mono text-slate-400">
                   {b.n.toLocaleString()}
                 </Td>

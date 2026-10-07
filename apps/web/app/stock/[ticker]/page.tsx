@@ -95,7 +95,8 @@ export default async function StockPage({
 
   const a = asset.data;
   const p20: Prediction | undefined = preds.data.find((p) => p.horizon === 20);
-  const chgUp = a.change >= 0;
+  const chg = (a as any).change ?? (a.price - ((a as any).prev_close ?? a.price));
+  const chgUp = chg >= 0;
 
   // Forward prediction band for the chart: expected path ± vol, 20 sessions
   const band: ForwardBand[] = Array.from({ length: 20 }, (_, i) => {
@@ -146,10 +147,10 @@ export default async function StockPage({
             </p>
             <p className={`text-sm ${chgUp ? "text-emerald-300" : "text-rose-300"}`}>
               {chgUp ? "+" : ""}
-              {a.change.toFixed(2)} ({ret1(a.change_pct)})
+              {chg.toFixed(2)} ({ret1(a.change_pct)})
             </p>
             <p className="mt-1 text-xs text-slate-500">
-              Mkt cap {money(a.mkt_cap)}
+              Mkt cap {money((a as any).market_cap ?? (a as any).mkt_cap)}
             </p>
           </div>
         </div>
