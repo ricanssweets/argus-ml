@@ -32,7 +32,7 @@ services:
       - key: AUTH_DISABLED
         value: "true"
 
-  - type: static
+  - type: static_site
     name: argus-web
     buildCommand: cd apps/web && npm ci && NEXT_STATIC_EXPORT=1 NEXT_PUBLIC_ARGUS_API_URL=https://argus-ml.onrender.com npm run build
     staticPublishPath: apps/web/out
