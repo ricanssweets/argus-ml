@@ -77,7 +77,7 @@ async function fetchEnvelope<T>(
     clearTimeout(timer);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = (await res.json()) as Envelope<T>;
-    if (!json || !("data" in json) || !("meta" in json))
+    if (!json || !("data" in json) || !("meta" in json) || json.data == null)
       throw new Error("bad envelope");
     return { ...json, meta: { ...json.meta, demo: false } };
   } catch {
@@ -133,7 +133,21 @@ export const api = {
     fetchEnvelope(
       `/scanner?setup=momentum_breakout&horizon=20&limit=${limit}`,
       () => demoScanner(limit)
-    ),
+    ).then((env) => ({
+      ...env,
+      // Normalize: real API uses composite_score/setup_tags and omits name.
+      data: ((env.data as any[]) ?? []).map((s: any) => ({
+        ticker: s.ticker,
+        name: s.name ?? s.ticker,
+        sector: s.sector ?? "",
+        score: s.score ?? s.composite_score ?? 0,
+        p_positive: s.p_positive ?? 0.5,
+        expected_return: s.expected_return ?? 0,
+        risk_reward: s.risk_reward ?? 0,
+        setup: s.setup ?? s.setup_tags?.[0] ?? "—",
+        horizon: s.horizon ?? 20,
+      })),
+    })),
 
   getAssets: (): Promise<Envelope<Asset[]>> =>
     fetchEnvelope(`/assets?limit=50`, () => demoAssetList()),

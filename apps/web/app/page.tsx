@@ -103,7 +103,7 @@ export default async function DashboardPage() {
               "R/R",
             ]}
           >
-            {scanner.data.map((s) => (
+            {scanner.data.map((s: any) => (
               <tr key={s.ticker} className="hover:bg-ink-800/50">
                 <Td>
                   <Link
@@ -112,12 +112,14 @@ export default async function DashboardPage() {
                   >
                     {s.ticker}
                   </Link>
-                  <p className="text-xs text-slate-500">{s.name}</p>
+                  <p className="text-xs text-slate-500">{s.name ?? s.ticker}</p>
                 </Td>
                 <Td className="font-mono text-xs text-slate-400">
-                  {s.setup.replaceAll("_", " ")}
+                  {(s.setup ?? s.setup_tags?.[0] ?? "—").replaceAll("_", " ")}
                 </Td>
-                <Td className="font-semibold text-white">{score0(s.score)}</Td>
+                <Td className="font-semibold text-white">
+                  {score0(s.score ?? s.composite_score ?? 0)}
+                </Td>
                 <Td className="text-emerald-300">{pct(s.p_positive)}</Td>
                 <Td className="text-slate-200">{ret1(s.expected_return)}</Td>
                 <Td className="text-slate-200">
