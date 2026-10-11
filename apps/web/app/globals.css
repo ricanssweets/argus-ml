@@ -36,3 +36,29 @@ body {
 .recharts-wrapper :focus {
   outline: none;
 }
+
+@keyframes argus-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes argus-slide-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-fade {
+  animation: argus-fade 0.2s ease-out;
+}
+
+.animate-slide-in {
+  animation: argus-slide-in 0.25s ease-out;
+}
