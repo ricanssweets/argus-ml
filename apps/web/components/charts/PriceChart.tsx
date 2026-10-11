@@ -56,7 +56,7 @@ export function PriceChart({
     <div className="h-80 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid stroke="#1a2230" strokeDasharray="3 3" />
+          <CartesianGrid stroke="#232328" strokeDasharray="3 3" />
           <XAxis
             dataKey="label"
             tick={{ fill: "#64748b", fontSize: 11 }}
@@ -70,8 +70,8 @@ export function PriceChart({
           />
           <Tooltip
             contentStyle={{
-              backgroundColor: "#141b26",
-              border: "1px solid #243041",
+              backgroundColor: "#1a1a1e",
+              border: "1px solid #313138",
               borderRadius: 8,
               fontSize: 12,
             }}
@@ -84,7 +84,7 @@ export function PriceChart({
             type="monotone"
             dataKey="high"
             stroke="none"
-            fill="#0ea5e9"
+            fill="#c99763"
             fillOpacity={0.12}
             connectNulls
             name="Prediction band (high)"
@@ -94,7 +94,7 @@ export function PriceChart({
             type="monotone"
             dataKey="low"
             stroke="none"
-            fill="#0ea5e9"
+            fill="#c99763"
             fillOpacity={0}
             connectNulls
             name="Prediction band (low)"
@@ -103,7 +103,7 @@ export function PriceChart({
           <Line
             type="monotone"
             dataKey="close"
-            stroke="#e2e8f0"
+            stroke="#e9e2d5"
             strokeWidth={1.8}
             dot={false}
             connectNulls
@@ -112,7 +112,7 @@ export function PriceChart({
           <Line
             type="monotone"
             dataKey="ma50"
-            stroke="#f59e0b"
+            stroke="#a56e40"
             strokeWidth={1.2}
             dot={false}
             connectNulls
@@ -121,7 +121,7 @@ export function PriceChart({
           <Line
             type="monotone"
             dataKey="ma200"
-            stroke="#8b5cf6"
+            stroke="#175049"
             strokeWidth={1.2}
             dot={false}
             connectNulls
@@ -130,7 +130,7 @@ export function PriceChart({
           <Line
             type="monotone"
             dataKey="expected"
-            stroke="#0ea5e9"
+            stroke="#c99763"
             strokeWidth={1.8}
             strokeDasharray="6 4"
             dot={false}

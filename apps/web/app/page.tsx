@@ -30,10 +30,10 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-wide text-stone-100">
-            Dashboard
+          <h1 className="font-display text-3xl tracking-[0.12em] text-stone-100">
+            DASHBOARD
           </h1>
-          <p className="mt-1 text-sm text-bronze-400/90">
+          <p className="mt-1.5 text-sm tracking-[0.2em] text-bronze-400/90 uppercase">
             Vision builds better decisions
           </p>
           <p className="mt-1 text-sm text-slate-500">

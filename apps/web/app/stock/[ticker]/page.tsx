@@ -128,7 +128,7 @@ export default async function StockPage({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold text-white">{a.ticker}</h1>
+              <h1 className="font-display text-3xl tracking-[0.08em] text-stone-100">{a.ticker}</h1>
               <Badge tone={chgUp ? "bull" : "bear"}>
                 {chgUp ? "+" : ""}
                 {ret1(a.change_pct)}
@@ -275,7 +275,7 @@ export default async function StockPage({
       {p20?.engine_signals && (
         <Card
           title="Engine breakdown — 8 engines"
-          subtitle={`Pipeline: ${p20.pipeline ?? "synthetic_stub"} · calibrated: ${p20.calibrated ? "yes (ARGUS-EQ-1.1 isotonic)" : "no"} · as-of ${fmtDateTime(p20.as_of)} UTC`}
+          subtitle={`${p20.pipeline === "live" ? "Live pipeline" : "Illustrative pipeline"} · ${p20.calibrated ? "calibrated (ARGUS-EQ-1.1 isotonic)" : "uncalibrated"} · as-of ${fmtDateTime(p20.as_of)} UTC`}
         >
           <Table head={["Engine", "Signal", "Confidence", "Data status", "Note"]}>
             {Object.entries(p20.engine_signals).map(([name, e]) => (

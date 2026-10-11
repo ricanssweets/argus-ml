@@ -57,7 +57,7 @@ export default function BacktestingPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">Backtesting</h1>
+          <h1 className="font-display text-2xl tracking-[0.08em] text-stone-100">Backtesting</h1>
           <p className="mt-1 text-sm text-slate-500">
             Event-driven, with slippage and costs, benchmarked vs SPY. Research
             store only — backtests never touch production records.
