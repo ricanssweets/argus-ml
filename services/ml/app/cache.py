@@ -19,6 +19,7 @@ log = logging.getLogger("argus.ml")
 _client = None
 _unavailable_until = 0.0
 _warned = False
+_broken_warned = False
 
 
 def _redis_url() -> str:
@@ -39,7 +40,7 @@ def prediction_key(ticker: str, horizon: int, asof_date: str) -> str:
 
 def get_client():
     """Lazily connect; return None when Redis is unavailable (graceful)."""
-    global _client, _unavailable_until, _warned
+    global _client, _unavailable_until, _warned, _broken_warned
     now = time.monotonic()
     if _client is not None:
         return _client
@@ -51,6 +52,7 @@ def get_client():
                                       socket_timeout=2)
         client.ping()
         _client = client
+        _broken_warned = False
         return _client
     except Exception as e:  # noqa: BLE001 — Redis is optional
         _unavailable_until = now + 60.0  # back off before retrying
@@ -61,6 +63,23 @@ def get_client():
         return None
 
 
+def _mark_unavailable(exc: Exception) -> None:
+    """Drop a client that started failing and back off before reconnecting.
+
+    Without this, a client created before a Redis restart/failover is kept
+    forever: every call fails, `unavailable_until` is never set, and the
+    process never retries the connection. Cache misses stay harmless
+    either way — this only makes recovery automatic.
+    """
+    global _client, _unavailable_until, _broken_warned
+    _client = None
+    _unavailable_until = time.monotonic() + 60.0
+    if not _broken_warned:
+        log.warning("Redis cache error (%s) — cache paused for up to 60s, "
+                    "serving without cache", exc)
+        _broken_warned = True
+
+
 def cache_get(key: str) -> Optional[dict]:
     client = get_client()
     if client is None:
@@ -68,7 +87,8 @@ def cache_get(key: str) -> Optional[dict]:
     try:
         raw = client.get(key)
         return json.loads(raw) if raw else None
-    except Exception:  # noqa: BLE001 — cache must never break serving
+    except Exception as e:  # noqa: BLE001 — cache must never break serving
+        _mark_unavailable(e)
         return None
 
 
@@ -79,13 +99,15 @@ def cache_set(key: str, value: dict, ttl: int | None = None) -> bool:
     try:
         client.set(key, json.dumps(value), ex=ttl if ttl is not None else cache_ttl())
         return True
-    except Exception:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
+        _mark_unavailable(e)
         return False
 
 
 def reset_for_tests() -> None:
     """Clear cached client state (tests only)."""
-    global _client, _unavailable_until, _warned
+    global _client, _unavailable_until, _warned, _broken_warned
     _client = None
     _unavailable_until = 0.0
     _warned = False
+    _broken_warned = False

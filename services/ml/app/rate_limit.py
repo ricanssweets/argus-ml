@@ -5,6 +5,13 @@ sorted set per (bucket, identity) key. Falls back to the in-process
 sliding window when Redis is unset or unreachable — with a LOUD log so
 the degraded mode is never mistaken for the real one.
 
+Failure contract (``RedisSlidingWindow.check`` NEVER raises): a Redis
+restart/eviction (``NOSCRIPT``) reloads the script and retries once; any
+other backend error (timeouts, dropped connections, OOM, ACL) degrades to
+the in-process limiter for ``RATE_LIMIT_REDIS_COOLDOWN_S`` seconds and
+logs once per degradation episode. A rate-limit backend hiccup must never
+turn into an HTTP 500 for the API.
+
 Key scheme: ``rl:{bucket}:{identity}`` — members are unique request IDs,
 scores are epoch milliseconds. TTL = window length.
 """
@@ -43,25 +50,99 @@ end
 """
 
 
-class RedisSlidingWindow:
-    """Redis-backed sliding window. Raises on connection failure."""
+def _is_noscript(exc: BaseException) -> bool:
+    """True when Redis reports that the cached Lua script is gone."""
+    try:
+        from redis.exceptions import NoScriptError
+        if isinstance(exc, NoScriptError):
+            return True
+    except Exception:  # noqa: BLE001 — redis-py not importable? fall back
+        pass
+    return "NOSCRIPT" in str(exc).upper()
 
-    def __init__(self, url: str):
+
+def _cooldown_seconds() -> float:
+    try:
+        return max(0.0, float(os.environ.get("RATE_LIMIT_REDIS_COOLDOWN_S", "10")))
+    except ValueError:
+        return 10.0
+
+
+class RedisSlidingWindow:
+    """Redis-backed sliding window with in-process degradation.
+
+    ``check()`` NEVER raises (the previous implementation called
+    ``evalsha`` unguarded, so any Redis restart / ``SCRIPT FLUSH`` raised
+    ``NoScriptError`` out of ``RateLimitMiddleware.dispatch`` → HTTP 500 for
+    the whole API, contradicting the documented fallback):
+
+    * ``NOSCRIPT`` — reload the Lua script and retry once.
+    * any other backend error (connection dropped, timeout, OOM, ACL...) —
+      degrade to an in-process window for a cooldown period and log LOUDLY
+      ONCE per degradation episode (not per request). Redis is retried
+      after the cooldown; a successful call resets the episode flag.
+
+    ``.degraded`` exposes the current state so health reporting/tests can
+    see that limits are per-replica while Redis is down.
+    """
+
+    def __init__(self, url: str, *, cooldown_s: float | None = None):
         import redis
         self._client = redis.Redis.from_url(
             url, socket_connect_timeout=2, socket_timeout=3)
         self._client.ping()  # fail fast when unreachable
         self._sha = self._client.script_load(_LUA)
+        self._fallback = MemorySlidingWindow()
+        self._cooldown_s = _cooldown_seconds() if cooldown_s is None else cooldown_s
+        self._degraded_until = 0.0
+        self._warned = False
+
+    @property
+    def degraded(self) -> bool:
+        return time.monotonic() < self._degraded_until
 
     def check(self, bucket: str, identity: str, limit: int,
               window_ms: int = 60_000) -> Tuple[bool, int, int]:
-        """Return (allowed, remaining, retry_after_seconds)."""
+        """Return (allowed, remaining, retry_after_seconds). Never raises."""
+        if self.degraded:
+            return self._fallback.check(bucket, identity, limit, window_ms)
+        try:
+            result = self._redis_check(bucket, identity, limit, window_ms)
+        except Exception as exc:  # noqa: BLE001 — degrade, never propagate
+            self._degrade(exc)
+            return self._fallback.check(bucket, identity, limit, window_ms)
+        if self._warned:
+            log.info("rate limiter: Redis backend recovered — shared limit "
+                     "active again")
+            self._warned = False
+        return result
+
+    def _redis_check(self, bucket: str, identity: str, limit: int,
+                     window_ms: int) -> Tuple[bool, int, int]:
         key = f"rl:{bucket}:{identity}"
         now_ms = int(time.time() * 1000)
         member = f"{now_ms}:{uuid.uuid4().hex}"
-        allowed, remaining, retry = self._client.evalsha(
-            self._sha, 1, key, now_ms, window_ms, limit, member)
+        try:
+            allowed, remaining, retry = self._client.evalsha(
+                self._sha, 1, key, now_ms, window_ms, limit, member)
+        except Exception as exc:  # noqa: BLE001
+            if not _is_noscript(exc):
+                raise
+            # Script cache evicted (restart / SCRIPT FLUSH): reload once.
+            self._sha = self._client.script_load(_LUA)
+            allowed, remaining, retry = self._client.evalsha(
+                self._sha, 1, key, now_ms, window_ms, limit, member)
         return bool(allowed), int(remaining), int(retry)
+
+    def _degrade(self, exc: BaseException) -> None:
+        self._degraded_until = time.monotonic() + self._cooldown_s
+        if not self._warned:
+            log.error(
+                "rate limiter: Redis backend error (%s) — degrading to the "
+                "IN-PROCESS limiter for %.0fs: limits are PER-REPLICA until "
+                "Redis recovers. Not logged again until a recovery attempt "
+                "succeeds and fails once more.", exc, self._cooldown_s)
+            self._warned = True
 
 
 class MemorySlidingWindow:
