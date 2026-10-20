@@ -9,8 +9,10 @@ Locked laws (from `docs/ARCHITECTURE.md`):
   only. Enforced by test (`tests/test_no_leakage.py`), not convention.
 - **Calibration is fit on out-of-fold predictions only** — the calibrator
   API takes `oof_predictions`, never training arrays.
-- **Minimum evidence:** `MIN_SAMPLES_PER_BUCKET = 20` for any calibration
-  bucket or performance claim.
+- **Minimum evidence:** `MIN_SAMPLES_PER_BUCKET = 20` is a **per-bucket**
+  rule, not a global one: `metrics.calibration_table` merges thin buckets and
+  `calibration` refuses fewer than `20 × MIN_BUCKETS` OOF samples and
+  coalesces knots until every bucket holds >= 20.
 - **Honesty about data:** engines report `data_status`
   (`CONFIRMED | LIKELY | UNCONFIRMED | CONFLICTING | MISSING`); missing data
   is reported, never fabricated.
@@ -46,7 +48,11 @@ out = engines.run_engines(df, "2026-10-05", peers={"SPY": spy_df})
 print(out["A"])  # {"signal":..., "confidence":..., "data_status":..., "details":...}
 
 # Walk-forward splits + leakage assertion
-for tr, te in validation.walk_forward_splits(n=1000, train_window=252, test_window=21):
+# purge = the label horizon h: it drops the training rows whose label window
+# (i, i+h] would reach into the test block. embargo adds a serial-correlation
+# buffer before the gap. See validation.walk_forward_splits.
+for tr, te in validation.walk_forward_splits(n=1000, train_window=252,
+                                             test_window=21, purge=20):
     ...
 validation.assert_no_leakage(X_times, label_starts, label_ends)  # raises on leak
 
@@ -57,7 +63,10 @@ table = metrics.calibration_table(y_true, y_prob, n_bins=10)  # merges <20-sampl
 # Calibration (OOF only)
 cal = calibration.IsotonicCalibrator().fit(oof_pred, oof_labels)
 p = cal.predict(raw_scores)
-cal.to_map()   # -> calibration_maps DB row shape {"method","buckets","fitted_at","min_samples"}
+cal.to_map()   # -> calibration_maps row {"method","buckets","min_samples",
+#                "bucket_sizes","small_buckets","calibrated","content_sha256"}
+# Deterministic: fitted_at is METADATA and is omitted (pass
+# include_fitted_at=True to serialise it); content_sha256 identifies the map.
 
 # Backtest
 res = backtest.run_backtest(

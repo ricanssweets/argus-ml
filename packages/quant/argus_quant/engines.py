@@ -23,6 +23,7 @@ All engines are deterministic: same inputs -> same outputs, no RNG.
 from __future__ import annotations
 
 import json
+import logging
 import os
 
 import numpy as np
@@ -31,9 +32,20 @@ import pandas as pd
 from . import indicators as ind
 from .features import build_features
 
+log = logging.getLogger("argus_quant.engines")
+
 STUB_REASON = "unavailable - wire in later phase"
+
+# Data directory for the optional JSON side-files (sector medians, ...).
+# Configured by environment variable, defaulting to ``data/`` INSIDE the
+# package -- never a developer home directory. A configured-but-missing
+# path is logged, so the silent degradation to hurdle scoring is visible.
+DATA_DIR = os.path.expanduser(
+    os.environ.get("ARGUS_QUANT_DATA_DIR")
+    or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
 SECTOR_MEDIANS_PATH = os.path.expanduser(
-    "~/workspace/argus/data/sector_medians.json")
+    os.environ.get("ARGUS_QUANT_SECTOR_MEDIANS")
+    or os.path.join(DATA_DIR, "sector_medians.json"))
 
 
 def _clip(x: float) -> float:
@@ -55,6 +67,10 @@ def _tanh_scale(x: float, scale: float = 1.0) -> float:
 # ---------------------------------------------------------------------------
 # Engine A — Technical (indicators)
 # ---------------------------------------------------------------------------
+_A_COMPONENTS = ["rsi", "macd", "stoch", "trend", "bollinger", "ichimoku",
+                 "volume"]
+
+
 def engine_a(df: pd.DataFrame, as_of) -> dict:
     """Technical sub-signal from causal indicators at ``as_of``.
 
@@ -65,50 +81,94 @@ def engine_a(df: pd.DataFrame, as_of) -> dict:
       trend      : +1 if close>SMA50 and SMA20>SMA50, -1 mirrored, scaled by ADX
       bollinger  : mean-reversion read from %B ((0.5 - %B)*2 clipped)
       ichimoku   : cloud position (+1/0/-1)
-    Confidence: fraction of components with valid (non-NaN) inputs.
+      volume     : volume z-score signed by the trend read
+
+    MISSING-INPUT CONTRACT (mirrors engine B): a component whose *raw*
+    indicator is NaN contributes 0.0 with weight 0.0 -- it is never turned
+    into a value by a zero-fill. ``confidence`` is the fraction of the 7
+    components with valid (non-NaN) inputs and ``data_status`` is
+    CONFIRMED only when all 7 are valid, LIKELY at >= 5, UNCONFIRMED below
+    that, and MISSING (signal 0.0, confidence 0.0) when no input is
+    usable. Insufficient history therefore produces a neutral read, never
+    a fabricated bullish one.
     """
     feats, _, snapped = build_features(df, as_of)
     f = feats.iloc[0]
     parts, weights, valid = [], [], 0
 
     def add(value, weight):
+        """Add a component; weight 0 and value 0.0 when the input is NaN."""
         nonlocal valid
-        if pd.notna(value):
-            parts.append(_clip(value))
+        try:
+            ok = value is not None and bool(np.isfinite(float(value)))
+        except (TypeError, ValueError):
+            ok = False
+        if ok:
+            parts.append(_clip(float(value)))
             weights.append(weight)
             valid += 1
         else:
             parts.append(0.0)
             weights.append(0.0)
 
-    add((50.0 - _safe(f["rsi_14"])) / 50.0, 0.20)          # RSI mean reversion
-    add(_tanh_scale(_safe(f["macd_hist"]) * 200.0), 0.15)  # MACD momentum
-    add((50.0 - _safe(f["stoch_k"])) / 50.0, 0.10)         # stochastic
-    adx_v = _safe(f["adx_14"])
-    trend_dir = _clip(_safe(f["close_vs_sma50"]) * 10.0 + _safe(f["sma20_sma50_cross"]) * 10.0)
-    trend = trend_dir * min(adx_v / 25.0, 1.0) if adx_v > 0 else trend_dir * 0.25
-    add(trend, 0.20)                                       # trend, ADX-gated
-    add(_clip((0.5 - _safe(f["bb_pctb"])) * 2.0), 0.10)    # bollinger reversion
-    add(_safe(f["ichimoku_cloud"]), 0.15)                  # cloud
-    add(_clip(_safe(f["volume_zscore_20"]) * 0.1) * np.sign(trend_dir or 1.0), 0.10)
+    add((50.0 - f["rsi_14"]) / 50.0, 0.20)          # RSI mean reversion
+    add(_tanh_scale(f["macd_hist"] * 200.0), 0.15)  # MACD momentum
+    add((50.0 - f["stoch_k"]) / 50.0, 0.10)         # stochastic
 
+    cv, sc, adx_v = f["close_vs_sma50"], f["sma20_sma50_cross"], f["adx_14"]
+    trend_dir = None
+    if pd.notna(cv) and pd.notna(sc):
+        trend_dir = _clip(float(cv) * 10.0 + float(sc) * 10.0)
+        if pd.notna(adx_v) and float(adx_v) > 0:
+            add(trend_dir * min(float(adx_v) / 25.0, 1.0), 0.20)
+        else:
+            # ADX unavailable: keep the real trend read, ungated (25% scale)
+            add(trend_dir * 0.25, 0.20)
+    else:
+        add(None, 0.20)
+
+    add((0.5 - f["bb_pctb"]) * 2.0, 0.10)           # bollinger reversion
+    add(f["ichimoku_cloud"], 0.15)                  # cloud
+    # Volume is signed by the trend read; a FLAT trend (trend_dir == 0.0)
+    # has no sign, so the component contributes exactly 0.0 -- the old
+    # ``np.sign(trend_dir or 1.0)`` treated 0.0 as falsy and pushed
+    # anomalous volume BULLISH in a sideways tape. An unknown trend
+    # (trend_dir is None) drops the component instead of assuming +1.
+    if pd.notna(f["volume_zscore_20"]) and trend_dir is not None:
+        add(_clip(float(f["volume_zscore_20"]) * 0.1)
+            * float(np.sign(trend_dir)), 0.10)
+    else:
+        add(None, 0.10)
+
+    n_components = len(_A_COMPONENTS)
     wsum = sum(weights)
     signal = _clip(sum(p * w for p, w in zip(parts, weights)) / wsum) if wsum > 0 else 0.0
-    n_components = 7
     confidence = round(valid / n_components, 3)
-    status = "CONFIRMED" if valid == n_components else ("LIKELY" if valid >= 5 else "UNCONFIRMED")
+    if valid == 0:
+        status = "MISSING"
+    elif valid == n_components:
+        status = "CONFIRMED"
+    elif valid >= 5:
+        status = "LIKELY"
+    else:
+        status = "UNCONFIRMED"
+    components = {n: round(p, 4) for n, p in zip(_A_COMPONENTS, parts)}
+    details = {
+        "as_of": str(snapped),
+        "components": components,
+        "valid_components": valid,
+        "missing_components": [n for n, w in zip(_A_COMPONENTS, weights) if w == 0.0],
+        "note": "all indicators causal; values at as_of use bars <= as_of only; "
+                "components with NaN inputs carry weight 0 (no zero-fill)",
+    }
+    if valid == 0:
+        details["reason"] = ("no usable indicator at as_of (insufficient "
+                            "history) - neutral, not fabricated")
     return {
         "signal": signal,
         "confidence": confidence,
         "data_status": status,
-        "details": {
-            "as_of": str(snapped),
-            "components": {n: round(p, 4) for n, p in zip(
-                ["rsi", "macd", "stoch", "trend", "bollinger", "ichimoku", "volume"],
-                parts)},
-            "valid_components": valid,
-            "note": "all indicators causal; values at as_of use bars <= as_of only",
-        },
+        "details": details,
     }
 
 
@@ -161,12 +221,21 @@ def load_sector_context(sector: str, path: str = SECTOR_MEDIANS_PATH) -> dict | 
     """Load {sector, as_of, distributions} for percentile scoring.
 
     Returns None when the file is absent or the sector has no data --
-    engine C then falls back to hurdle scoring (or MISSING).
+    engine C then falls back to hurdle scoring (or MISSING). A missing
+    file is LOGGED (the path is configuration, not a silent default), so
+    "sector context never loaded" is diagnosable instead of invisible.
     """
+    if not os.path.exists(path):
+        log.warning("sector medians file not found at %s - engine C falls "
+                    "back to hurdle scoring; set ARGUS_QUANT_DATA_DIR or "
+                    "ARGUS_QUANT_SECTOR_MEDIANS", path)
+        return None
     try:
         with open(path, encoding="utf-8") as fh:
             data = json.load(fh)
     except (OSError, ValueError):
+        log.warning("sector medians file at %s is unreadable - engine C "
+                    "falls back to hurdle scoring", path, exc_info=True)
         return None
     dists = data.get("sectors", {}).get(sector)
     if not dists:
@@ -297,7 +366,8 @@ def _engine_c_hurdle(fundamentals: dict, as_of) -> dict:
 
 
 def engine_c(fundamentals: dict | None, as_of,
-             sector_context: dict | None = None) -> dict:
+             sector_context: dict | None = None,
+             allow_undated: bool = False) -> dict:
     """Fundamental sub-signal.
 
     ``fundamentals``: point-in-time dict from
@@ -306,6 +376,11 @@ def engine_c(fundamentals: dict | None, as_of,
     debt_to_equity, interest_coverage, reported_at). ``reported_at`` must
     be ``<= as_of`` or the record is rejected and the engine returns
     MISSING (point-in-time discipline).
+
+    ``reported_at`` is REQUIRED: a record without it cannot prove its own
+    knowability, so it is rejected as MISSING (reason "reported_at
+    missing") instead of being scored. Pass ``allow_undated=True`` only
+    for a caller that has established knowability out of band.
 
     ``sector_context``: from ``load_sector_context(sector)`` -- enables
     sector-percentile scoring (valuation + quality blend). Without it,
@@ -318,7 +393,16 @@ def engine_c(fundamentals: dict | None, as_of,
                 "details": {"reason": "no fundamentals supplied",
                             "note": STUB_REASON}}
     rep = fundamentals.get("reported_at")
-    if rep is not None and pd.Timestamp(rep) > as_of:
+    if rep is None:
+        if not allow_undated:
+            return {"signal": 0.0, "confidence": 0.0, "data_status": "MISSING",
+                    "details": {"reason": "reported_at missing - cannot prove "
+                                          "knowability at as_of %s, record "
+                                          "rejected" % as_of,
+                                "note": "pass allow_undated=True only when "
+                                        "knowability is established out of "
+                                        "band"}}
+    elif pd.Timestamp(rep) > as_of:
         return {"signal": 0.0, "confidence": 0.0, "data_status": "MISSING",
                 "details": {"reason": "reported_at %s is after as_of %s - "
                             "point-in-time violation, record rejected" % (rep, as_of)}}
@@ -330,15 +414,24 @@ def engine_c(fundamentals: dict | None, as_of,
 # ---------------------------------------------------------------------------
 # Engine H — Cross-asset (correlations vs SPY/QQQ/VIX)
 # ---------------------------------------------------------------------------
+# Nominal relative-strength lookback (bars). Both legs are reduced together
+# to the history actually available (see engine_h).
+_H_REL_WINDOW = 63
+
+
 def engine_h(df: pd.DataFrame, as_of,
              peers: dict[str, pd.DataFrame] | None = None) -> dict:
     """Cross-asset sub-signal.
 
     ``peers``: dict like {"SPY": df_spy, "QQQ": df_qqq, "VIX": df_vix},
     each an OHLCV DataFrame. Components:
-      rel_strength : asset 63d return minus SPY 63d return (tanh-scaled)
-      corr_regime  : 63d return correlation with SPY; very high correlation
-                     dampens idiosyncratic conviction
+      rel_strength : asset return minus SPY return over the SAME trailing
+                     window (nominal 63d; both legs are shortened together
+                     to the available common history and the window used is
+                     reported as ``rel_strength_window_days``), tanh-scaled.
+                     Needs >= 30 usable bars on both legs, else skipped.
+      corr_regime  : return correlation with SPY over exactly that window;
+                     very high correlation dampens idiosyncratic conviction
       vix_drag     : if VIX supplied, elevated VIX (vs its 63d median)
                      pushes the signal negative (risk-off)
     All joins are as-of aligned (peers truncated to <= as_of).
@@ -358,17 +451,34 @@ def engine_h(df: pd.DataFrame, as_of,
     if spy is not None:
         s = spy.loc[spy.index <= as_of]
         srets = np.log(s["close"] / s["close"].shift(1)).dropna()
-        common = rets.index.intersection(srets.index)[-63:]
-        if len(common) >= 30:
-            corr = float(rets.loc[common].corr(srets.loc[common]))
-            r_a = float(d["close"].iloc[-1] / d["close"].iloc[max(0, len(d) - 64)] - 1.0)
-            r_s = float(s["close"].iloc[-1] / s["close"].iloc[max(0, len(s) - 64)] - 1.0)
+        common = rets.index.intersection(srets.index)
+        # BOTH legs of the relative-strength read must cover the SAME
+        # window. ``max(0, len(d) - 64)`` silently collapsed the asset to
+        # its whole (short) history while SPY kept its full 63d leg, so a
+        # 35-bar asset was compared on 34 days against SPY's 63 -- a
+        # systematically optimistic, mislabelled number. Take the longest
+        # window both series actually support and report it.
+        win = min(len(common), _H_REL_WINDOW, len(d) - 1, len(s) - 1)
+        if len(common) >= 30 and win >= 30:
+            win_idx = common[-win:]
+            corr = float(rets.loc[win_idx].corr(srets.loc[win_idx]))
+            r_a = float(d["close"].iloc[-1] / d["close"].iloc[-(win + 1)] - 1.0)
+            r_s = float(s["close"].iloc[-1] / s["close"].iloc[-(win + 1)] - 1.0)
             rel = _tanh_scale(r_a - r_s, scale=0.05)
             damp = 1.0 - 0.5 * min(max(corr, 0.0), 1.0)  # high corr -> less idiosyncratic edge
             parts.append(_clip(rel * damp))
             weights.append(0.6)
             notes.update({"spy_corr_63d": round(corr, 4),
-                          "rel_strength_63d": round(r_a - r_s, 4)})
+                          "rel_strength_63d": round(r_a - r_s, 4),
+                          # the window actually used: < 63 means the
+                          # history was shorter than the nominal lookback
+                          "rel_strength_window_days": int(win),
+                          "asset_return_window": round(r_a, 4),
+                          "spy_return_window": round(r_s, 4)})
+        else:
+            notes["rel_strength_skipped"] = (
+                "insufficient common history (%d usable bars, need >= 30)"
+                % max(win, 0))
 
     vix = peers.get("VIX")
     if vix is not None:

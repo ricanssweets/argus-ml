@@ -2,9 +2,12 @@
 
 Method (per ARCHITECTURE.md step 10): resample residuals
 ``r_t - mean(r)`` from the trailing return history, then build paths as
-``cumprod(1 + expected_return/h + residual_t)``. 50k paths by default,
-seeded RNG for reproducibility (same seed + same inputs => identical
-outputs).
+``cumprod(1 + drift + residual_t)`` with the GEOMETRIC per-bar drift
+``(1 + expected_return)**(1/horizon) - 1`` so the paths compose back to
+exactly the requested total return (an arithmetic ``expected_return/horizon``
+overshot: (1+e/h)^h - 1 = 0.0512 for e = 0.05, h = 20). 50k paths by
+default, seeded RNG for reproducibility (same seed + same inputs =>
+identical outputs).
 
 Outputs the prediction distribution record fields: P(positive),
 E[R], vol, expected high/low, CI, downside/upside, risk-reward.
@@ -33,10 +36,16 @@ def residual_bootstrap(returns, expected_return: float, horizon: int = 20,
         raise ValueError("need at least 20 returns for the residual pool")
     if horizon <= 0:
         raise ValueError("horizon must be positive")
+    if expected_return <= -1.0:
+        raise ValueError("expected_return must be > -100%")
     rng = np.random.default_rng(seed)
 
     residuals = r - r.mean()
-    drift = expected_return / horizon
+    # GEOMETRIC per-bar drift: (1+e)^(1/h) - 1 composes back to exactly the
+    # requested total return. The old arithmetic e/h drifted high
+    # ((1+e/h)^h - 1 = 0.0512 for e=0.05, h=20, +2.4% relative), so the
+    # reported distribution was centred above the request.
+    drift = (1.0 + expected_return) ** (1.0 / horizon) - 1.0
     draws = rng.choice(residuals, size=(n_paths, horizon))
     path_rets = drift + draws
     terminal = np.prod(1.0 + path_rets, axis=1) - 1.0
@@ -56,6 +65,12 @@ def residual_bootstrap(returns, expected_return: float, horizon: int = 20,
         "p_positive": round(float(np.mean(terminal > 0)), 4),
         "p_negative": round(float(np.mean(terminal < 0)), 4),
         "expected_return": round(float(np.mean(terminal)), 4),
+        "expected_return_target": round(float(expected_return), 6),
+        "drift_per_bar": round(float(drift), 8),
+        "drift_note": ("drift = (1+expected_return)^(1/horizon)-1 "
+                       "(geometric, composes back to the requested total); "
+                       "E[R] is the sample mean and differs from the target "
+                       "by residual-bootstrap sampling noise only"),
         "expected_vol": round(float(np.std(terminal, ddof=1)), 4),
         "expected_high": round(float(np.mean(path_high)), 4),
         "expected_low": round(float(np.mean(path_low)), 4),

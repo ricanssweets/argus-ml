@@ -27,7 +27,48 @@ import pandas as pd
 
 from . import edgar
 
-_WORD = re.compile(r"[a-z]+(?:'[a-z]+)?")
+_WORD = re.compile(r"[a-z0-9]+(?:[-'][a-z0-9]+)*")
+
+# --- Multi-word phrase normalisation --------------------------------------
+# The lexicon is keyed by single hyphenated tokens (``chapter-11``,
+# ``all-time-high``, ``write-down`` ...). Filers and headlines write those
+# concepts as separate words ("chapter 11", "all time high", "write down"),
+# so the raw tokenizer could never emit the lexicon key and the phrase
+# scored 0.0 (neutral) -- a bankruptcy filing read as "no news". Each
+# pattern below rewrites the spaced/inflected surface form to the canonical
+# lexicon token BEFORE tokenisation. Order matters only for overlaps; every
+# pattern is anchored on word boundaries.
+_PHRASES = [
+    (re.compile(r"\bchapter\s+(?:11|7|13|15)\b"), "chapter-11"),
+    (re.compile(r"\ball[\s-]time[\s-]highs?\b"), "all-time-high"),
+    (re.compile(r"\brecord[\s-]highs?\b"), "record-high"),
+    (re.compile(r"\bwrite[\s-]?downs?\b"), "write-down"),
+    (re.compile(r"\bwrit(?:e|ing|ten)[\s-]?offs?\b"), "write-down"),
+    (re.compile(r"\blay[\s-]?offs?\b"), "lay-off"),
+    (re.compile(r"\blaying\s+off\b|\blaid\s+off\b"), "lay-off"),
+    (re.compile(r"\bwork[\s-]?force\s+reductions?\b"), "workforce-reduction"),
+    (re.compile(r"\bprofit[\s-]warnings?\b"), "profit-warning"),
+    (re.compile(r"\bguidance[\s-]cuts?\b"), "guidance-cut"),
+    (re.compile(r"\bmargin[\s-]expansions?\b"), "margin-expansion"),
+    (re.compile(r"\bauditor[\s-]change\b"), "auditor-change"),
+    (re.compile(r"\bsec[\s-]investigations?\b"), "sec-investigation"),
+    (re.compile(r"\bsettlement[\s-]costs?\b"), "settlement-cost"),
+    (re.compile(r"\bsettlement[\s-]wins?\b"), "settlement-win"),
+    (re.compile(r"\bnegative[\s-]watch\b"), "negative-watch"),
+    (re.compile(r"\bdowngrade[\s-]watch\b"), "downgrade-watch"),
+    (re.compile(r"\bcovenant[\s-]breachs?\b|\bcovenant[\s-]breaches\b"),
+     "covenant-breach"),
+    (re.compile(r"\bfda[\s-]approvals?\b"), "fda-approval"),
+    (re.compile(r"\braise[sd]?\s+(?:its\s+)?guidance\b"), "raised-guidance"),
+    (re.compile(r"\braise[sd]?\s+(?:its\s+)?dividends?\b"), "raised-dividend"),
+    (re.compile(r"\bshort[\s-]?falls?\b"), "short-fall"),
+    (re.compile(r"\bgoodwill[\s-]impairments?\b"), "goodwill-impairment"),
+    (re.compile(r"\bcontract[\s-]award(?:ed)?\b"), "contract-awarded"),
+    (re.compile(r"\b(?:cfo|chief\s+financial\s+officer)[\s-]departures?\b"),
+     "cfo-departure"),
+    (re.compile(r"\b(?:ceo|chief\s+executive\s+officer)[\s-]departures?\b"),
+     "ceo-departure"),
+]
 
 # --- Documented finance lexicon -------------------------------------------
 # Positive: beats, raises, upgrades, growth, buybacks, dividends, wins.
@@ -66,20 +107,52 @@ cyberattack outflow outflows downgrade-watch negative-watch junk
 assert len(POSITIVE_WORDS) >= 40 and len(NEGATIVE_WORDS) >= 40, \
     "lexicon must stay finance-specific and sizable"
 
+# Reachability invariant: every lexicon entry (including the 25 hyphenated
+# ones) must be emittable by the tokenizer, otherwise it is dead weight
+# that appears to widen coverage without ever matching.
+_LEXICON = POSITIVE_WORDS | NEGATIVE_WORDS
+_UNREACHABLE = sorted(w for w in _LEXICON if not _WORD.fullmatch(w))
+assert not _UNREACHABLE, \
+    f"lexicon entries the tokenizer can never emit: {_UNREACHABLE}"
+
+
+def _tokens(text: str) -> set[str]:
+    """Candidate lexicon keys for ``text``.
+
+    Normalises multi-word surface forms to their canonical hyphenated
+    lexicon token, tokenises (hyphens/apostrophes/digits kept inside a
+    token, so ``chapter-11`` stays one token), and ALSO contributes the
+    hyphen-separated parts of every compound token. Keeping the parts
+    matters for recall: ``cost-cutting`` must still match ``cutting``.
+    """
+    low = (text or "").lower()
+    for pattern, canonical in _PHRASES:
+        low = pattern.sub(canonical, low)
+    out: set[str] = set()
+    for tok in _WORD.findall(low):
+        out.add(tok)
+        if "-" in tok:
+            out.update(p for p in tok.split("-") if p)
+    return out
+
 
 def score_text(text: str) -> dict:
     """Score one document: (pos-neg)/(pos+neg+2) in (-1, 1).
 
     The +2 smoothing keeps single-word documents from pinning to +/-1.
-    Returns {score, pos_hits, neg_hits, pos_words, neg_words}.
+    Returns {score, pos_hits, neg_hits, pos_words, neg_words, no_hits}.
+    ``no_hits`` is True when the document matched no lexicon entry: the
+    score is then 0.0 by the documented smoothing convention (a neutral
+    reading, not a fabricated one) and callers can tell the two apart.
     """
-    tokens = _WORD.findall((text or "").lower())
-    pos = sorted({t for t in tokens if t in POSITIVE_WORDS})
-    neg = sorted({t for t in tokens if t in NEGATIVE_WORDS})
+    toks = _tokens(text)
+    pos = sorted(t for t in toks if t in POSITIVE_WORDS)
+    neg = sorted(t for t in toks if t in NEGATIVE_WORDS)
     p, n = len(pos), len(neg)
     return {"score": (p - n) / (p + n + 2),
             "pos_hits": p, "neg_hits": n,
-            "pos_words": pos, "neg_words": neg}
+            "pos_words": pos, "neg_words": neg,
+            "no_hits": (p + n) == 0}
 
 
 def sentiment_summary(cik: int, as_of, headlines: list | None = None,

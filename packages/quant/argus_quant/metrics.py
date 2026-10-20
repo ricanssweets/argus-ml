@@ -74,12 +74,24 @@ def rmse(y_true, y_pred) -> float:
     return float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
 
 
-def directional_accuracy(y_true_returns, y_pred_returns) -> float:
-    """Fraction of periods where sign(pred) == sign(true). Zero true return
-    counts as correct only if prediction is exactly 0."""
+def directional_accuracy(y_true_returns, y_pred_returns) -> float | None:
+    """Fraction of periods where sign(pred) == sign(true).
+
+    Rows with a ZERO true return are EXCLUDED: 0 is not a direction, and
+    counting ``sign(0) == sign(0)`` as a hit inflated the metric whenever
+    predictions were rounded to 0 (a single ``[0] / [0.0]`` pair scored
+    1.0). Returns None when no row has a non-zero true return -- "not
+    computable", never a fabricated score.
+    """
     yt = np.asarray(y_true_returns, dtype=float).ravel()
     yp = np.asarray(y_pred_returns, dtype=float).ravel()
-    return float(np.mean(np.sign(yt) == np.sign(yp)))
+    if len(yt) != len(yp):
+        raise ValueError("y_true_returns and y_pred_returns must be the "
+                         "same length")
+    mask = yt != 0.0
+    if not mask.any():
+        return None
+    return float(np.mean(np.sign(yt[mask]) == np.sign(yp[mask])))
 
 
 def calibration_table(y_true, y_prob, n_bins: int = 10) -> dict:
@@ -91,10 +103,16 @@ def calibration_table(y_true, y_prob, n_bins: int = 10) -> dict:
     any bin that cannot be merged to 20, is reported with
     ``"insufficient": True`` and excluded from the calibration error.
 
-    Returns {"buckets": [...], "calibration_error": float,
+    Returns {"buckets": [...], "calibration_error": float | None,
+             "calibration_error_all_bins": float, "n_sufficient": int,
              "insufficient_bins": [...], "n": int}.
-    calibration_error = sum(n_b/N * |pred_mean - obs_mean|) over sufficient
-    buckets only.
+    ``calibration_error`` = sum(n_b/N * |pred_mean - obs_mean|) over
+    sufficient buckets only, and is **None** when NO bucket reaches
+    MIN_SAMPLES_PER_BUCKET: with no evidence the metric is not computable,
+    and reporting 0.0 would read as "perfectly calibrated".
+    ``calibration_error_all_bins`` is the same weighted sum over every
+    bucket (including insufficient ones) and is always computable -- use it
+    only as a diagnostic, never as a passed/failed calibration claim.
     """
     y_true, y_prob = _as_arrays(y_true, y_prob)
     edges = np.linspace(0.0, 1.0, n_bins + 1)
@@ -135,6 +153,8 @@ def calibration_table(y_true, y_prob, n_bins: int = 10) -> dict:
     N = len(y_true)
     buckets, insufficient = [], []
     cal_err = 0.0
+    cal_err_all = 0.0
+    n_sufficient = 0
     for b in bins:
         idx = b["idx"]
         n_b = len(idx)
@@ -145,12 +165,20 @@ def calibration_table(y_true, y_prob, n_bins: int = 10) -> dict:
                         "n": n_b, "predicted_mean": round(pred_mean, 4),
                         "observed_mean": round(obs_mean, 4),
                         "insufficient": not ok})
+        if n_b:
+            cal_err_all += (n_b / N) * abs(pred_mean - obs_mean)
         if ok:
             cal_err += (n_b / N) * abs(pred_mean - obs_mean)
+            n_sufficient += n_b
         else:
             insufficient.append({"bin_low": round(b["lo"], 4),
                                  "bin_high": round(b["hi"], 4), "n": n_b})
-    return {"buckets": buckets, "calibration_error": round(cal_err, 6),
+    return {"buckets": buckets,
+            # None, not 0.0: "no bucket reached 20 samples" is NOT perfect
+            # calibration -- it is "not computable".
+            "calibration_error": (round(cal_err, 6) if n_sufficient else None),
+            "calibration_error_all_bins": round(cal_err_all, 6),
+            "n_sufficient": n_sufficient,
             "insufficient_bins": insufficient, "n": N,
             "min_samples_per_bucket": MIN_SAMPLES_PER_BUCKET}
 
@@ -163,4 +191,5 @@ def reliability_curve_data(y_true, y_prob, n_bins: int = 10) -> dict:
     return {"points": pts,
             "diagonal": [{"x": 0.0, "y": 0.0}, {"x": 1.0, "y": 1.0}],
             "calibration_error": table["calibration_error"],
+            "n_sufficient": table["n_sufficient"],
             "insufficient_bins": table["insufficient_bins"]}

@@ -11,14 +11,18 @@ def historical_var(returns, alpha: float = 0.05) -> float:
     """Historical VaR at tail probability ``alpha`` (e.g. 0.05 => 95% VaR).
 
     Reported as a POSITIVE loss fraction: VaR=0.03 means "losses exceed 3%
-    only (1-alpha) of the time"... precisely: the alpha-quantile loss.
+    only (1-alpha) of the time"... precisely: the alpha-quantile loss,
+    floored at 0. When even the alpha-quantile of the sample is POSITIVE
+    (every observation was a gain) there is no loss to report and the
+    function returns 0.0 -- a negative "loss" would contradict the
+    documented positive-loss convention.
     """
     r = np.asarray(pd.Series(returns).dropna(), dtype=float)
     if len(r) == 0:
         raise ValueError("empty returns")
     if not 0.0 < alpha < 1.0:
         raise ValueError("alpha must be in (0,1)")
-    return float(-np.quantile(r, alpha))
+    return float(max(-np.quantile(r, alpha), 0.0))
 
 
 def historical_cvar(returns, alpha: float = 0.05) -> float:
@@ -75,20 +79,41 @@ def beta(asset_returns, benchmark_returns) -> float | None:
 
 
 def fixed_fractional_size(equity: float, risk_pct: float, entry: float,
-                          stop: float) -> dict:
+                          stop: float, max_leverage: float = 1.0) -> dict:
     """Fixed-fractional shares: risk ``risk_pct`` of equity on the distance
-    entry->stop. Returns {"shares", "risk_amount", "notional"}."""
+    entry->stop.
+
+    The notional is CAPPED at ``max_leverage`` x equity. Without the cap a
+    tight stop bought unbounded size: with 1% risk and a 0.67% stop the
+    position was 1.5x equity (10x at a 0.1% stop), silently. When the cap
+    binds, ``capped`` is True and ``leverage`` reports the realised
+    notional/equity ratio (the capped leg then risks LESS than
+    ``risk_pct``, which is the intended conservative direction).
+
+    Returns {"shares", "risk_amount", "notional", "leverage",
+             "max_leverage", "capped", "risk_at_stop"}.
+    """
     if equity <= 0 or entry <= 0:
         raise ValueError("equity and entry must be positive")
     if not 0.0 < risk_pct < 1.0:
         raise ValueError("risk_pct must be in (0,1)")
+    if max_leverage <= 0:
+        raise ValueError("max_leverage must be positive")
     per_share_risk = abs(entry - stop)
     if per_share_risk <= 0:
         raise ValueError("stop must differ from entry")
     risk_amount = equity * risk_pct
     shares = int(risk_amount // per_share_risk)
+    cap_shares = int(max_leverage * equity // entry)
+    capped = shares > cap_shares
+    shares = min(shares, cap_shares)
+    notional = shares * entry
     return {"shares": shares, "risk_amount": round(risk_amount, 2),
-            "notional": round(shares * entry, 2)}
+            "notional": round(notional, 2),
+            "leverage": round(notional / equity, 4) if equity else 0.0,
+            "max_leverage": float(max_leverage),
+            "capped": bool(capped),
+            "risk_at_stop": round(shares * per_share_risk, 2)}
 
 
 def volatility_targeted_size(equity: float, returns, target_vol: float,

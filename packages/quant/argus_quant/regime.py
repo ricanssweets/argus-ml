@@ -14,12 +14,17 @@ Inputs (each a point-in-time value at ``as_of``):
   breadth   : % of the breadth-proxy universe with close > 50d SMA
 
 Breadth proxy (documented): SPY plus the 11 GICS sector SPDR ETFs
-(XLK XLF XLV XLI XLE XLU XLP XLY XLB XLC XLI -> deduped: XLK, XLF, XLV,
-XLI, XLE, XLU, XLP, XLY, XLB, XLC, XLI). Equal-weighted "12 names".
+(XLK XLF XLV XLI XLE XLU XLP XLY XLB XLC XLRE) = 12 equal-weighted names.
+The earlier text listed XLI twice, omitted XLRE and still called the set
+"12 names" while ``BREADTH_PROXY`` held 11 entries; the list and this
+paragraph now agree, and the real-estate sector is covered.
 This is a PROXY for true market breadth (which would need the full
 S&P 500 constituent list); the proxy is cheaper to fetch and documented
 here and in the registry notes. Callers that have true constituent
 breadth may pass any universe — the classifier only needs the % number.
+Members whose 50-day SMA is not yet formed are EXCLUDED from that day's
+denominator (see :func:`breadth_series`); they are never counted as
+"below the average".
 
 Missing inputs degrade gracefully: a rule whose required inputs are
 missing simply does not fire (recorded in drivers as "input missing"),
@@ -81,6 +86,17 @@ BREADTH_HEALTHY = 50.0
 BREADTH_NEUTRAL_LO = 40.0
 BREADTH_WEAK = 30.0
 BREADTH_CAPITULATION = 20.0
+BREADTH_SMA = 50             # lookback of the breadth trend filter
+# Minimum number of members with a formed SMA on a given day for breadth to
+# be a measurement at all. 1 = "at least one usable member": with a single
+# member the reading is still a real (if thin) 0/100 observation, and the
+# usable count is returned so a caller can demand more. The point of the
+# guard is to avoid a number computed from NO usable data.
+BREADTH_MIN_MEMBERS = 1
+
+# "Flat trend" band used by the Low Vol rule (|SPY vs 200d SMA|).
+# Named here because it is part of the classifier's behaviour.
+FLAT_TREND_BAND = 0.03
 
 # Confidence: base + per-driver increment, capped. A driver is one fired
 # threshold condition recorded in the output drivers list.
@@ -96,7 +112,7 @@ HY_Z_MIN_PERIODS = 60
 
 # Breadth proxy constituents (documented proxy, see module docstring).
 BREADTH_PROXY = ("SPY", "XLK", "XLF", "XLV", "XLI", "XLE", "XLU",
-                 "XLP", "XLY", "XLB", "XLC")
+                 "XLP", "XLY", "XLB", "XLC", "XLRE")
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +220,7 @@ def classify_regime(as_of, trend=None, vix=None, vix_chg20=None,
          if vxc is not None else "VIX spike"),
         ("Low Vol",
          None if (vx is None or t is None or bth is None)
-         else (vx < VIX_CALM and abs(t) <= 0.03
+         else (vx < VIX_CALM and abs(t) <= FLAT_TREND_BAND
                and BREADTH_NEUTRAL_LO <= bth <= BREADTH_STRONG),
          "calm grind"
          if vx is None or t is None or bth is None
@@ -262,6 +278,41 @@ def classify_regime(as_of, trend=None, vix=None, vix_chg20=None,
             "as_of": str(pd.Timestamp(as_of).date())}
 
 
+def breadth_series(prices: dict[str, pd.DataFrame],
+                   index: pd.Index | None = None) -> tuple[pd.Series, pd.Series]:
+    """Causal breadth (%) with NaN-aware denominators.
+
+    For every day: the % of breadth-proxy members whose close is above
+    their own ``BREADTH_SMA``-bar SMA. A member whose SMA is not yet
+    formed (recently listed ETF, partial history) is EXCLUDED from that
+    day's denominator -- it used to be cast to 0.0, i.e. counted as
+    "below its average", which halved the reading for 50 sessions and
+    could fire Risk-Off / block Bull on data that simply did not exist.
+    Days with fewer than ``BREADTH_MIN_MEMBERS`` usable members are NaN
+    (breadth not measurable), never a fabricated number.
+
+    Returns ``(breadth, n_members_used)``: both indexed like ``index``
+    (``SPY``'s index by default) so the caller can audit coverage.
+    """
+    if index is None:
+        index = prices["SPY"].sort_index().index
+    members = [m for m in BREADTH_PROXY if m in prices]
+    cols: dict[str, pd.Series] = {}
+    for m in members:
+        c = prices[m].sort_index()["close"]
+        sma = c.rolling(BREADTH_SMA, min_periods=BREADTH_SMA).mean()
+        # NaN (excluded) while the SMA is undefined -- not 0.0 ("below")
+        cols[m] = (c > sma).astype(float).where(sma.notna())
+    if not cols:
+        nan = pd.Series(np.nan, index=index)
+        return nan, pd.Series(0, index=index)
+    frame = pd.concat(cols, axis=1).reindex(index)
+    n_used = frame.notna().sum(axis=1)
+    breadth = (frame.mean(axis=1, skipna=True) * 100.0).where(
+        n_used >= BREADTH_MIN_MEMBERS)
+    return breadth, n_used
+
+
 # ---------------------------------------------------------------------------
 # History builder — one row per trading day, matches the market_regimes
 # table shape: {time, regime, confidence, drivers}.
@@ -291,14 +342,10 @@ def regime_history(prices: dict[str, pd.DataFrame],
     sma200 = spy_close.rolling(200).mean()
     vix_chg20 = vix_close.pct_change(20)
 
-    # breadth proxy: % of constituents above their 50d SMA (causal)
-    members = [m for m in BREADTH_PROXY if m in prices]
-    above = []
-    for m in members:
-        c = prices[m].sort_index()["close"]
-        above.append((c > c.rolling(50).mean()).astype(float))
-    breadth = (pd.concat(above, axis=1).mean(axis=1) * 100.0
-               if above else pd.Series(np.nan, index=spy.index))
+    # breadth proxy: % of constituents above their 50d SMA (causal,
+    # NaN-aware: members without a formed SMA are excluded, see
+    # breadth_series; days with < BREADTH_MIN_MEMBERS usable -> NaN)
+    breadth, _n_breadth_members = breadth_series(prices, index=spy.index)
 
     if macro is not None and not macro.empty:
         m = macro.sort_index()

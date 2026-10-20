@@ -89,9 +89,16 @@ def rsi(close: pd.Series, n: int = 14) -> pd.Series:
     avg_loss = _wilder_mean(loss, n)
     rs = avg_gain / avg_loss.replace(0.0, np.nan)
     out = 100.0 - (100.0 / (1.0 + rs))
-    # Edge: no losses at all -> RSI = 100 (all gains); no gains -> 0.
+    # Edge cases, in this order:
+    #   no losses at all   -> 100 (all gains)
+    #   no gains at all    -> 0   (all losses)
+    #   neither (flat)     -> 50  (neutral: no direction to measure)
+    # The flat case used to fall through to the "no gains" branch and print
+    # 0.0 -- an "extreme oversold" reading fabricated from a constant price
+    # (engine A then scored (50-0)/50 = +1.0, a maximal BUY).
     out = out.where(avg_loss != 0.0, 100.0)
     out = out.where(avg_gain != 0.0, 0.0)
+    out = out.where(~((avg_gain == 0.0) & (avg_loss == 0.0)), 50.0)
     return out
 
 
@@ -133,11 +140,19 @@ def _true_range(high: pd.Series, low: pd.Series,
 
 def atr(high: pd.Series, low: pd.Series, close: pd.Series,
         n: int = 14) -> pd.Series:
-    """Average True Range with Wilder's smoothing (alpha=1/n, adjust=False).
-    TR at bar t uses high/low[t] and close[t-1] — no future data.
-    NaN warmup of n bars."""
-    tr = _true_range(high, low, close)
-    return tr.ewm(alpha=1.0 / n, adjust=False, min_periods=n).mean()
+    """Average True Range with Wilder's smoothing (seed = simple mean).
+
+    Bar 0 has no previous close, so its reduced true range (high-low only)
+    is excluded from the seed; the first average is the simple mean of the
+    next ``n`` complete true ranges and the recursion then applies
+    ``(prev*(n-1) + tr)/n`` -- the same seeding ``rsi`` uses. First valid
+    value at 0-based index ``n`` (n+1 bars of warmup). TR at bar t uses
+    high/low[t] and close[t-1] -- no future data.
+    """
+    tr = _true_range(high, low, close).copy()
+    if len(tr):
+        tr.iloc[0] = np.nan  # no previous close -> not a complete TR
+    return _wilder_mean(tr, n)
 
 
 def _directional_movement(high: pd.Series, low: pd.Series):
@@ -145,35 +160,53 @@ def _directional_movement(high: pd.Series, low: pd.Series):
     down = -low.diff()
     plus_dm = up.where((up > down) & (up > 0), 0.0)
     minus_dm = down.where((down > up) & (down > 0), 0.0)
+    # Bar 0 has no previous high/low: the first directional comparison is
+    # undefined, so it is excluded rather than fabricated as 0.0.
+    if len(plus_dm):
+        plus_dm.iloc[0] = np.nan
+        minus_dm.iloc[0] = np.nan
     return plus_dm, minus_dm
 
 
 def adx(high: pd.Series, low: pd.Series, close: pd.Series,
         n: int = 14) -> pd.DataFrame:
-    """ADX / +DI / -DI with Wilder's smoothing. Bar t uses data <= t.
-    Warmup: DI needs n bars (the +/-DM where-fill removes the diff NaN, so
-    the first valid DI is at 0-based index n-1); ADX is the Wilder average
-    of DX, so the first non-NaN ADX appears at 0-based index 2n-2 —
-    documented, not shortened, to avoid partial-window bias."""
-    tr = _true_range(high, low, close)
+    """ADX / +DI / -DI with Wilder's smoothing (seed = simple mean, as in
+    ``rsi``/``atr``). Bar t uses data <= t.
+
+    Warmup: bar 0 carries no previous close, so its TR and +/-DM are
+    excluded from the Wilder seed; the first valid DI is at 0-based index
+    ``n`` and ADX (the Wilder average of DX) first appears at ``2n-1``
+    (index 27 for n=14) -- documented, not shortened, to avoid
+    partial-window bias."""
+    tr = _true_range(high, low, close).copy()
+    if len(tr):
+        tr.iloc[0] = np.nan  # no previous close -> not a complete TR
     plus_dm, minus_dm = _directional_movement(high, low)
-    atr_w = tr.ewm(alpha=1.0 / n, adjust=False, min_periods=n).mean()
-    plus_di = 100.0 * plus_dm.ewm(alpha=1.0 / n, adjust=False,
-                                  min_periods=n).mean() / atr_w.replace(0.0, np.nan)
-    minus_di = 100.0 * minus_dm.ewm(alpha=1.0 / n, adjust=False,
-                                    min_periods=n).mean() / atr_w.replace(0.0, np.nan)
+    atr_w = _wilder_mean(tr, n)
+    plus_di = 100.0 * _wilder_mean(plus_dm, n) / atr_w.replace(0.0, np.nan)
+    minus_di = 100.0 * _wilder_mean(minus_dm, n) / atr_w.replace(0.0, np.nan)
     dx = 100.0 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0.0, np.nan)
-    adx_v = dx.ewm(alpha=1.0 / n, adjust=False, min_periods=n).mean()
+    adx_v = _wilder_mean(dx, n)
     return pd.DataFrame({"adx": adx_v, "plus_di": plus_di,
                          "minus_di": minus_di}, index=close.index)
 
 
-def bollinger(close: pd.Series, n: int = 20,
-              n_std: float = 2.0) -> pd.DataFrame:
-    """Bollinger Bands. Bar t uses closes [t-n+1, t]. Sample std (ddof=1).
-    %B = (close - lower) / (upper - lower); NaN when band width is 0."""
+def bollinger(close: pd.Series, n: int = 20, n_std: float = 2.0,
+              ddof: int = 1) -> pd.DataFrame:
+    """Bollinger Bands. Bar t uses closes [t-n+1, t].
+
+    ``ddof`` selects the dispersion convention: 1 (default, SAMPLE std,
+    current behaviour) or 0 (POPULATION std, the TA-Lib / most-platform
+    convention; bands are ~2.6% narrower at n=20 and %B differs by up to
+    0.022). It is a documented choice, not an accident, and is recorded in
+    the feature registry so a consumer comparing against another tool knows
+    which convention produced the number.
+    %B = (close - lower) / (upper - lower); NaN when band width is 0.
+    """
+    if ddof not in (0, 1):
+        raise ValueError("ddof must be 0 (population) or 1 (sample)")
     mid = sma(close, n)
-    std = close.rolling(window=n, min_periods=n).std(ddof=1)
+    std = close.rolling(window=n, min_periods=n).std(ddof=ddof)
     upper = mid + n_std * std
     lower = mid - n_std * std
     width = (upper - lower).replace(0.0, np.nan)

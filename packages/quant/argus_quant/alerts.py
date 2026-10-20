@@ -36,11 +36,16 @@ Rule types:
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Any, Callable, Dict, Optional
 
 import numpy as np
 import pandas as pd
+
+from .indicators import atr as _indicators_atr
+
+log = logging.getLogger("argus_quant.alerts")
 
 DEFAULTS: Dict[str, Dict[str, Any]] = {
     "score_change": {"threshold": 10.0},
@@ -200,14 +205,15 @@ def rule_unusual_options(rule: Dict, ctx: Dict) -> Optional[Dict]:
 
 
 def _atr14(df: pd.DataFrame) -> np.ndarray:
-    h = df["high"].to_numpy(dtype=float)
-    l = df["low"].to_numpy(dtype=float)
-    c = df["close"].to_numpy(dtype=float)
-    tr = np.maximum(h[1:] - l[1:], np.abs(h[1:] - c[:-1]))
-    atr = np.full(len(df), np.nan)
-    for i in range(14, len(df)):
-        atr[i] = np.mean(tr[i - 14:i])
-    return atr
+    """ATR(14) with the FULL 3-term true range
+    ``max(h-l, |h-prev_close|, |l-prev_close|)`` and Wilder's smoothing
+    (delegates to the package's canonical ``indicators.atr``, so the alert
+    rule and the feature/backtest code cannot drift apart). The missing
+    ``|low - prev_close|`` term understated exactly the down-gap bars that
+    ``rule_vol_spike`` is meant to detect.
+    """
+    return _indicators_atr(df["high"], df["low"], df["close"], 14) \
+        .to_numpy(dtype=float)
 
 
 def rule_vol_spike(rule: Dict, ctx: Dict) -> Optional[Dict]:
@@ -274,12 +280,21 @@ _EVALUATORS: Dict[str, Callable[[Dict, Dict], Optional[Dict]]] = {
 }
 
 
-def evaluate_rule(rule: Dict[str, Any], context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def evaluate_rule(rule: Dict[str, Any], context: Dict[str, Any],
+                  return_diagnostic: bool = False
+                  ) -> Optional[Dict[str, Any]]:
     """Evaluate one rule against a point-in-time context.
 
     Returns an alert dict (alerts table shape) or None. Inactive rules and
-    unknown rule types never fire. Exceptions are swallowed -> None: a
-    broken rule must not crash the cron evaluator.
+    unknown rule types never fire.
+
+    A rule that RAISES is logged at WARNING with its traceback (rule id,
+    rule type, as_of and exception), so a broken rule is diagnosable
+    instead of silently never firing. With ``return_diagnostic=True`` the
+    failure is also returned as ``{"error": ..., "rule_id": ...,
+    "rule_type": ..., "ticker": ..., "as_of": ...}`` for the caller to
+    persist; ``evaluate_rules`` keeps its "alerts only" contract by not
+    asking for it.
     """
     if not rule.get("is_active", True):
         return None
@@ -288,7 +303,17 @@ def evaluate_rule(rule: Dict[str, Any], context: Dict[str, Any]) -> Optional[Dic
         return None
     try:
         return fn(rule, context)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - a broken rule must not crash the cron
+        log.warning("alert rule %s (%s) failed at as_of=%s: %s: %s",
+                    rule.get("id"), rule.get("rule_type"),
+                    context.get("as_of"), type(exc).__name__, exc,
+                    exc_info=True)
+        if return_diagnostic:
+            return {"error": f"{type(exc).__name__}: {exc}",
+                    "rule_id": rule.get("id"),
+                    "rule_type": rule.get("rule_type"),
+                    "ticker": rule.get("ticker") or context.get("ticker"),
+                    "as_of": context.get("as_of")}
         return None
 
 

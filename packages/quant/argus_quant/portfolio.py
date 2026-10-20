@@ -9,7 +9,7 @@ value-weighted start. Pass ``as_of`` to truncate the analysis window
 Provided:
   analyze(...)            full portfolio risk payload (dict)
   portfolio_returns(...)  daily portfolio return series
-  weights(...)            current weights from qty x last price
+  weights(...)            current weights from qty x last price at as_of
   diversification_score   0-100, formula documented below
   factor_exposure         momentum / volatility / reversal from price
                           features (engine-B style); value/size need
@@ -117,14 +117,24 @@ def _closes(prices: dict) -> dict[str, pd.Series]:
     return out
 
 
-def weights(prices: dict, positions: list[dict]) -> dict[str, float]:
-    """Current weights from qty x last available close. Sums to 1."""
+def weights(prices: dict, positions: list[dict],
+            as_of=None) -> dict[str, float]:
+    """Current weights from qty x last available close at ``as_of``.
+
+    ``as_of`` (optional, backwards compatible) truncates every price series
+    to bars ``<= as_of`` BEFORE taking the last close, so the weights are
+    point-in-time. Without ``as_of`` the full history is used (legacy
+    behaviour). Sums to 1.
+    """
     closes = _closes(prices)
+    if as_of is not None:
+        cutoff = pd.Timestamp(as_of)
+        closes = {t: s.loc[s.index <= cutoff] for t, s in closes.items()}
     vals = {}
     for p in positions:
         t = p["ticker"].upper()
         if t not in closes or closes[t].dropna().empty:
-            raise ValueError(f"no price history for {t}")
+            raise ValueError(f"no price history for {t} at as_of={as_of}")
         vals[t] = float(p["qty"]) * float(closes[t].dropna().iloc[-1])
     total = sum(vals.values())
     if total <= 0:
@@ -181,12 +191,19 @@ def _sharpe(ret: pd.Series) -> float | None:
     return float(ret.mean() / sd * np.sqrt(ANNUALIZE)) if sd > 0 else None
 
 
-def _sortino(ret: pd.Series) -> float | None:
-    down = ret[ret < 0]
-    sd = down.std(ddof=1)
-    if len(down) == 0 or sd == 0:
+def _sortino(ret: pd.Series, target: float = 0.0) -> float | None:
+    """Sortino ratio with the TARGET downside deviation.
+
+    ``DD = sqrt(mean_over_all_N(min(r - target, 0)^2))`` over every
+    observation (MAR = ``target`` per period, default 0). Returns None when
+    DD is indistinguishable from zero (no downside -> not computable), never
+    a fabricated 0.0 or a NaN from dividing by the std of one loss.
+    """
+    excess = ret.to_numpy(dtype=float) - target
+    dd = float(np.sqrt(np.mean(np.minimum(excess, 0.0) ** 2))) if len(excess) else 0.0
+    if dd <= 1e-12:
         return None
-    return float(ret.mean() / sd * np.sqrt(ANNUALIZE))
+    return float(np.mean(excess) / dd * np.sqrt(ANNUALIZE))
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +221,15 @@ def _sortino(ret: pd.Series) -> float | None:
 # ---------------------------------------------------------------------------
 def diversification_score(w: dict[str, float],
                           corr: pd.DataFrame | None = None) -> float:
+    """0-100 diversification score (formula documented above).
+
+    The correlation penalty is computed on the SUB-MATRIX of the held
+    tickers (labels, not positions), so passing a ``corr`` built from a
+    wider universe (e.g. ``analyze`` includes the benchmark in ``prices``)
+    can no longer silently drop it. ``corr`` labels missing from ``w`` are
+    ignored; fewer than two matching labels means no penalty can be
+    measured.
+    """
     n = len(w)
     if n <= 1:
         return 0.0
@@ -211,11 +237,13 @@ def diversification_score(w: dict[str, float],
     hhi = float((wv ** 2).sum())
     hhi_norm = (1.0 - hhi) / (1.0 - 1.0 / n)
     corr_pen = 0.0
-    if corr is not None and len(corr) == n:
-        m = corr.to_numpy(dtype=float)
-        iu = np.triu_indices(n, k=1)
-        if len(iu[0]):
-            corr_pen = float(np.clip(np.nanmean(m[iu]), 0.0, 1.0))
+    if corr is not None and len(corr):
+        labels = [t for t in w if t in corr.index and t in corr.columns]
+        if len(labels) >= 2:
+            m = corr.loc[labels, labels].to_numpy(dtype=float)
+            iu = np.triu_indices(len(labels), k=1)
+            if len(iu[0]):
+                corr_pen = float(np.clip(np.nanmean(m[iu]), 0.0, 1.0))
     return round(100.0 * max(hhi_norm, 0.0) * (1.0 - 0.5 * corr_pen), 1)
 
 
@@ -290,17 +318,38 @@ def factor_exposure(prices: dict, w: dict[str, float],
             sd = float(np.std(list(lz.values()), ddof=1)) or 1.0
             size = {t: round((z - mu) / sd, 3) for t, z in lz.items()}
             size_reason = "z-scored log market cap (cross-sectional)"
+    for t, z in (size or {}).items():
+        if t in per:
+            per[t]["size"] = z
+        else:
+            per[t] = {"momentum": None, "reversal": None, "volatility": None,
+                      "size": z, "reason": "need >= 260 bars for price factors"}
     port = {}
     for f in ("momentum", "reversal", "volatility"):
         vals = [(w[t], per[t][f]) for t in per
                 if t in w and per[t].get(f) is not None]
         port[f] = (round(sum(x * y for x, y in vals) / sum(x for x, _ in vals), 4)
                    if vals else None)
+    # Portfolio size exposure = weight-weighted mean of the holdings that
+    # HAVE a market cap, RENORMALISED by the covered weight. Without the
+    # renormalisation the reported exposure was silently scaled down by the
+    # uncovered fraction of the portfolio (0.212 vs the correct 0.303 in the
+    # audit), while momentum/reversal/volatility already divided by
+    # sum(x). Coverage is reported so the number is auditable.
+    covered = [t for t in (size or {}) if t in w]
+    covered_w = float(sum(w[t] for t in covered))
+    size_port = (round(sum(w[t] * size[t] for t in covered) / covered_w, 3)
+                 if covered and covered_w > 0 else None)
+    if size is not None:
+        size_reason = (f"{size_reason}; renormalised over {covered_w:.1%} of "
+                       f"portfolio weight with a market cap")
     return {"per_holding": per,
-            "portfolio": {**port,
-                          "size": None if size is None else
-                          round(sum(w[t] * size[t] for t in size if t in w), 3),
-                          "value": None},
+            "portfolio": {**port, "size": size_port, "value": None},
+            "coverage": {
+                "n_holdings": len(w),
+                "n_with_size": len(covered),
+                "size_weight_covered": round(covered_w, 4),
+            },
             "notes": {
                 "size": size_reason,
                 "value": "needs point-in-time fundamentals "
@@ -323,10 +372,25 @@ def vol_target_weights(prices: dict, positions: list[dict],
                        target_vol: float = 0.15,
                        max_leverage: float = 1.0,
                        as_of=None) -> dict:
+    """Inverse-vol weights scaled to ``target_vol``, restricted to the
+    HELD tickers (``positions``).
+
+    Only held tickers are eligible: extra series in ``prices`` (benchmark,
+    watchlist) can no longer leak into the sizing block. Weights are
+    ``(1/vol_i)/sum(1/vol_j)`` scaled by ``k = target_vol/portfolio_vol``
+    (capped at ``max_leverage``). Raises when ``positions`` is empty or no
+    held ticker has usable history.
+    """
+    held = {str(p["ticker"]).upper() for p in positions}
+    if not held:
+        raise ValueError("positions is empty")
     closes = _closes(prices)
     if as_of is not None:
         as_of = pd.Timestamp(as_of)
         closes = {t: s.loc[s.index <= as_of] for t, s in closes.items()}
+    closes = {t: s for t, s in closes.items() if t in held}
+    if not closes:
+        raise ValueError("no held ticker has price history")
     rets = pd.concat({t: s.pct_change() for t, s in closes.items()},
                      axis=1).dropna().tail(63)
     if len(rets) < 20:
@@ -487,7 +551,7 @@ def analyze(prices: dict, positions: list[dict],
     ret = portfolio_returns(prices, positions, as_of=as_of)
     if len(ret) < 30:
         raise ValueError("need >= 30 portfolio return bars")
-    w = weights(prices, positions)
+    w = weights(prices, positions, as_of=as_of)
     closes = _closes(prices)
     if as_of is not None:
         closes = {t: s.loc[s.index <= pd.Timestamp(as_of)] for t, s in closes.items()}
@@ -511,6 +575,27 @@ def analyze(prices: dict, positions: list[dict],
     eq = (1.0 + ret).cumprod()
     mdd = R.max_drawdown(eq)
     sharpe, sortino = _sharpe(ret), _sortino(ret)
+
+    # data_status is DERIVED from the coverage actually achieved (it used
+    # to be hard-coded "CONFIRMED" even with beta=None, no benchmark, thin
+    # history or a factor block without market caps).
+    n_bars = len(ret)
+    has_beta = beta is not None
+    has_corr = corr is not None
+    if n_bars >= 252 and has_beta and has_corr:
+        data_status = "CONFIRMED"
+        status_reason = (f"{n_bars} return bars, benchmark beta available, "
+                         f"correlation matrix estimated")
+    elif n_bars >= 60 and (has_beta or has_corr):
+        data_status = "LIKELY"
+        status_reason = (f"{n_bars} return bars (<252); "
+                         f"beta={'yes' if has_beta else 'unavailable'}, "
+                         f"correlation={'estimated' if has_corr else 'unavailable'}")
+    else:
+        data_status = "UNCONFIRMED"
+        status_reason = (f"thin window ({n_bars} return bars) and "
+                         f"beta={'yes' if has_beta else 'unavailable'}; "
+                         f"treat as indicative only")
 
     return {
         "as_of": str(ret.index[-1].date()),
@@ -537,5 +622,6 @@ def analyze(prices: dict, positions: list[dict],
         "vol_target_sizing": vol_target_weights(prices, positions,
                                                 target_vol, as_of=as_of),
         "stress_tests": stress_test(prices, positions, scenarios, vix),
-        "data_status": "CONFIRMED",
+        "data_status": data_status,
+        "data_status_reason": status_reason,
     }

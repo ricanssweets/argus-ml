@@ -8,19 +8,31 @@ Sources:
 SEC policy: every request MUST carry a descriptive User-Agent header;
 requests without one are blocked (HTTP 403). We use
 ``ArgusResearch contact@example.com``. Politeness: >= 0.25 s between
-requests; everything cached under ~/workspace/argus/data/edgar/.
+requests; everything cached under the configured cache directory
+(``ARGUS_QUANT_EDGAR_CACHE``, else ``ARGUS_QUANT_CACHE_DIR``/edgar, else
+``~/workspace/argus/data/edgar``). Cache writes are atomic and a corrupt
+cache is detected, logged and refetched.
 
 Point-in-time discipline: each XBRL fact carries a ``filed`` date. The
 ``asof_*`` helpers return ONLY facts with ``filed <= as_of`` -- the filing
 date is the knowledge date, never the fiscal period end. Facts with no
 ``filed`` date are excluded (cannot prove they were knowable).
 
+DOCUMENTED LIMITATION (restatement bias): a later 10-K/A re-expressing the
+same period carries a later ``filed`` date, so its corrected value replaces
+the originally published one. ``filed <= as_of`` therefore means "knew the
+period existed", not "knows the number as first published". Keeping the
+originally filed fact per period would require a vintage store.
+
 Lookbacks:
   - Flow items (revenue, net income, OCF, capex, interest, D&A): trailing
     twelve months = sum of the latest 4 DISCRETE quarterly facts
-    (duration 70-120 days; YTD contexts sharing the same (fy, fp) are
-    excluded to avoid double-counting). Falls back to the latest annual
-    fact when fewer than 4 quarters are knowable.
+    (duration 70-120 days, any ``fp``; YTD contexts sharing the same
+    (fy, fp) are excluded to avoid double-counting) **only when those four
+    periods are contiguous and span ~12 months**. A missing or skipped
+    quarter breaks the run and the value falls back to the latest annual
+    fact (or to missing) -- four non-consecutive quarters are never summed
+    and labelled ``ttm_4q``.
   - Balance-sheet items (equity, debt, cash) and shares outstanding:
     latest knowable point-in-time value (filed <= as_of).
 Tag selection: when several candidate tags exist for one concept, the tag
@@ -31,11 +43,15 @@ legacy ``Revenues`` are never silently preferred).
 from __future__ import annotations
 
 import json
+import logging
 import os
+import tempfile
 import time
 
 import pandas as pd
 import requests
+
+log = logging.getLogger("argus_quant.edgar")
 
 USER_AGENT = "ArgusResearch contact@example.com"
 _HEADERS = {"User-Agent": USER_AGENT, "Accept-Encoding": "gzip"}
@@ -45,7 +61,13 @@ _TICKER_URL = "https://www.sec.gov/files/company_tickers.json"
 _FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
 _SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
 
-DEFAULT_CACHE_DIR = os.path.expanduser("~/workspace/argus/data/edgar")
+# Cache location: configurable (ARGUS_QUANT_CACHE_DIR / ARGUS_QUANT_EDGAR_CACHE)
+# with the documented deployment default, never only a home-directory literal.
+_BASE_CACHE = os.path.expanduser(
+    os.environ.get("ARGUS_QUANT_CACHE_DIR") or "~/workspace/argus/data")
+DEFAULT_CACHE_DIR = os.path.expanduser(
+    os.environ.get("ARGUS_QUANT_EDGAR_CACHE")
+    or os.path.join(_BASE_CACHE, "edgar"))
 
 # Cache freshness (seconds). Facts are filtered point-in-time downstream,
 # so a slightly stale cache cannot leak the future; freshness only bounds
@@ -55,18 +77,51 @@ _TTL_FACTS = 7 * 86400
 _TTL_SUBMISSIONS = 1 * 86400
 
 
+def _write_json_atomic(path: str, data) -> None:
+    """Write JSON atomically: temp file in the same directory + os.replace.
+
+    A write that dies half-way can no longer leave a truncated JSON file
+    that every later read fails on (the TTL check is mtime-based, so a
+    corrupt file would be retried for up to 7 days).
+    """
+    d = os.path.dirname(path) or "."
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".edgar-", suffix=".json.part")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def _get_json(url: str, cache_path: str, ttl: int) -> dict:
-    """GET with disk cache; polite sleep before any network hit."""
+    """GET with disk cache; polite sleep before any network hit.
+
+    A corrupt/truncated cache is DETECTED (``json.load`` failure), logged
+    and dropped, then refetched -- it is never propagated as a
+    ``JSONDecodeError`` to the caller.
+    """
     if os.path.exists(cache_path) and time.time() - os.path.getmtime(cache_path) < ttl:
-        with open(cache_path, encoding="utf-8") as fh:
-            return json.load(fh)
+        try:
+            with open(cache_path, encoding="utf-8") as fh:
+                return json.load(fh)
+        except (OSError, ValueError) as exc:
+            log.warning("EDGAR cache %s is corrupt (%s: %s) - discarding and "
+                        "refetching", cache_path, type(exc).__name__, exc)
+            try:
+                os.remove(cache_path)
+            except OSError:
+                pass
     time.sleep(_POLITE_SLEEP)
     resp = requests.get(url, headers=_HEADERS, timeout=30)
     resp.raise_for_status()
     data = resp.json()
-    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-    with open(cache_path, "w", encoding="utf-8") as fh:
-        json.dump(data, fh)
+    _write_json_atomic(cache_path, data)
     return data
 
 
@@ -93,17 +148,6 @@ def get_company_facts(cik: int, cache_dir: str = DEFAULT_CACHE_DIR) -> dict:
     return _get_json(_FACTS_URL.format(cik=cik),
                      os.path.join(cache_dir, "facts", "CIK%010d.json" % cik),
                      _TTL_FACTS)
-
-
-def _find_fact(raw: dict, tags: list):
-    """First (namespace, tag, fact) found; searches us-gaap then dei."""
-    facts = raw.get("facts", {})
-    for ns in ("us-gaap", "dei"):
-        for tag in tags:
-            fact = facts.get(ns, {}).get(tag)
-            if fact:
-                return ns, tag, fact
-    return None
 
 
 def _select_tag(raw: dict, tags: list, as_of: pd.Timestamp):
@@ -230,25 +274,78 @@ def _latest_annual(df: pd.DataFrame):
     return (k.iloc[0] if not k.empty else ann.iloc[0])
 
 
+def _quarter_candidates(df: pd.DataFrame) -> pd.DataFrame:
+    """Discrete-quarter flow facts, deduped and sorted newest-period first.
+
+    A discrete quarter is any fact whose period is 70-120 days long --
+    regardless of ``fp``. XBRL filers tag the fourth quarter's 90-day
+    context inside the 10-K with ``fp="FY"`` (and also file the ~365-day
+    annual context under the same ``fp``); filtering on ``fp.startswith("Q")``
+    silently drops that real quarter. YTD contexts (~180/270 days) and the
+    annual context (~365 days) are excluded by the duration filter.
+    """
+    if df.empty:
+        return df
+    q = df.copy()
+    q["duration_days"] = pd.to_numeric(q["duration_days"], errors="coerce")
+    q = q[q["duration_days"].notna() & q["duration_days"].between(70, 120)]
+    if q.empty:
+        return q
+    q["start"] = pd.to_datetime(q["start"], errors="coerce")
+    q["end"] = pd.to_datetime(q["end"], errors="coerce")
+    q = q.dropna(subset=["start", "end"])
+    if q.empty:
+        return q
+    q = q.drop_duplicates(subset=["fy", "fp"], keep="first")
+    return q.sort_values("end", ascending=False)
+
+
+def _contiguous_quarters(df: pd.DataFrame, max_gap_days: int = 20):
+    """Latest run of CONSECUTIVE discrete quarters (newest first), or [].
+
+    Walking back from the most recent quarter, each older quarter must end
+    within ``max_gap_days`` before the newer one starts (normal quarter
+    boundaries abut within a day; the tolerance only absorbs calendar
+    rounding). A gap means the four "latest" quarters do NOT span twelve
+    consecutive months, so a TTM sum would be a fabrication.
+    """
+    q = _quarter_candidates(df)
+    if q.empty:
+        return []
+    run = [q.iloc[0]]
+    prev_start = q.iloc[0]["start"]
+    for _, row in q.iloc[1:].iterrows():
+        gap = (prev_start - row["end"]).days
+        if 0 <= gap <= max_gap_days:
+            run.append(row)
+            prev_start = row["start"]
+        else:
+            break
+    return run
+
+
 def _ttm_value(df: pd.DataFrame):
     """Trailing-twelve-months for a quarterly flow item.
 
     XBRL 10-Qs carry BOTH discrete-quarter and year-to-date contexts under
     the same (fy, fp); summing both would double-count. We keep only
-    discrete-quarter contexts (duration 70-120 days), dedupe by (fy, fp)
-    keeping the latest filed, and sum the latest 4 by period end. Falls
-    back to the latest annual value when fewer than 4 discrete quarters
-    are knowable. Returns (value, method).
+    discrete-quarter contexts (duration 70-120 days, any ``fp`` -- see
+    :func:`_quarter_candidates`), dedupe by (fy, fp) keeping the latest
+    filed, and take the latest run of CONTIGUOUS quarters. Only when that
+    run has 4 quarters covering ~12 consecutive months is the sum labelled
+    ``ttm_4q``. Otherwise we fall back to the latest annual value, and when
+    there is none either, we report missing -- we never sum four quarters
+    that skip one and call it a TTM. Returns (value, method).
     """
     if df.empty:
         return None, "missing"
-    q = df[df["fp"].astype(str).str.startswith("Q")].copy()
-    q = q[q["duration_days"].between(70, 120)]
-    if not q.empty:
-        q = q.drop_duplicates(subset=["fy", "fp"], keep="first")
-        q = q.sort_values("end", ascending=False).head(4)
-        if len(q) == 4 and q["val"].notna().all():
-            return float(q["val"].sum()), "ttm_4q"
+    run = _contiguous_quarters(df)
+    if len(run) >= 4:
+        q4 = pd.DataFrame(run[:4])
+        if q4["val"].notna().all():
+            span = (q4["end"].max() - q4["start"].min()).days
+            if 300 <= span <= 430:
+                return float(q4["val"].sum()), "ttm_4q"
     ann = _latest_annual(df)
     if ann is not None and pd.notna(ann["val"]):
         return float(ann["val"]), "annual"
@@ -266,10 +363,10 @@ def _max_filed(cur, df: pd.DataFrame, method: str):
     if df.empty:
         return cur
     if method == "ttm_4q":
-        q = df[df["fp"].astype(str).str.startswith("Q")]
-        q = q.drop_duplicates(subset=["fy", "fp"], keep="first")
-        q = q.sort_values("end", ascending=False).head(4)
-        newest = q["filed"].max()
+        run = _contiguous_quarters(df)[:4]
+        if not run:
+            return cur
+        newest = pd.DataFrame(run)["filed"].max()
     else:
         ann = _latest_annual(df)
         newest = ann["filed"] if ann is not None else df["filed"].max()

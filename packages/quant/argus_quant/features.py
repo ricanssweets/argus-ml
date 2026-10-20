@@ -11,17 +11,29 @@ so the full provenance of a feature vector is auditable. ``feature_hash``
 is the sha256 of a canonical JSON encoding of the feature values
 (sorted names, rounded floats) - identical inputs always produce the
 identical hash.
+
+REPRODUCIBILITY CONTRACT (locked): the vector is computed on at most the
+last ``MIN_HISTORY_BARS`` bars (the longest registered lookback). Without
+that bound, recursively-seeded indicators (RSI/MACD/ATR/ADX) and even
+pandas' rolling accumulators make the values - and therefore the hash -
+depend on how much older history the caller happened to pass in, so the
+same ``as_of`` produced different hashes for different windows. With the
+bound, any caller supplying at least ``MIN_HISTORY_BARS`` bars before
+``as_of`` gets the identical vector and the identical hash.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
 
 import numpy as np
 import pandas as pd
 
 from . import indicators as ind
+
+log = logging.getLogger("argus_quant.features")
 
 
 def _last(s: pd.Series) -> float:
@@ -63,16 +75,46 @@ def _f_close_sma50(d):
 def _f_sma_cross(d):
     f, s = _last(ind.sma(d["close"], 20)), _last(ind.sma(d["close"], 50))
     return (f / s - 1.0) if s else float("nan")
+_VWAP_WINDOW = 20   # fixed trailing window (bars) for the VWAP distance
+_OBV_WINDOW = 21    # fixed trailing window (bars) for the OBV slope
+
+
 def _f_vwap_dist(d):
-    v, c = _last(ind.vwap(d)), _last(d["close"])
-    return (c / v - 1.0) if v else float("nan")
-def _f_obv_slope(d):
-    o = ind.obv(d["close"], d["volume"]).tail(20)
-    if len(o.dropna()) < 20:
+    """Close / 20-bar VWAP - 1.
+
+    WINDOW-INDEPENDENCE: computed on a FIXED trailing window (_VWAP_WINDOW
+    bars), not on the anchored cumulative VWAP from the start of the
+    supplied history. The same ``as_of`` therefore yields the same value
+    no matter how much older history the caller passed in."""
+    if len(d) < _VWAP_WINDOW:
         return float("nan")
-    x = np.arange(20.0)
-    slope = float(np.polyfit(x, o.values, 1)[0])
-    return slope / (abs(float(o.iloc[-1])) + 1e-9) * 252.0
+    w = d.tail(_VWAP_WINDOW)
+    typical = (w["high"] + w["low"] + w["close"]) / 3.0
+    vol = w["volume"].astype(float)
+    total = float(vol.sum())
+    if total <= 0:
+        return float("nan")
+    vwap = float((typical * vol).sum() / total)
+    c = _last(d["close"])
+    return (c / vwap - 1.0) if vwap else float("nan")
+
+
+def _f_obv_slope(d):
+    """20-bar OBV slope, normalized by the window's traded volume.
+
+    WINDOW-INDEPENDENCE: the OBV accumulation is anchored at the FIRST bar
+    of a fixed trailing window (_OBV_WINDOW bars) and the slope is scaled
+    by that window's total volume, so the value depends only on those bars
+    and not on where the supplied history starts."""
+    if len(d) < _OBV_WINDOW:
+        return float("nan")
+    w = d.tail(_OBV_WINDOW)
+    direction = np.sign(w["close"].diff().fillna(0.0))
+    o = (direction * w["volume"].astype(float)).cumsum().to_numpy(dtype=float)
+    x = np.arange(float(_OBV_WINDOW))
+    slope = float(np.polyfit(x, o, 1)[0])
+    scale = float(w["volume"].astype(float).abs().sum()) + 1e-9
+    return slope / scale * 252.0
 def _f_volume_z(d):
     v = d["volume"].tail(21)
     if len(v) < 21:
@@ -104,8 +146,10 @@ def _f_high_52w(d):
 
 
 # ---------------------------------------------------------------------------
-# Feature registry: every feature documents its lookback in bars
-# (None = full available history, e.g. anchored VWAP on daily bars).
+# Feature registry: every feature documents its lookback in bars.
+# Every feature is now bounded by a finite trailing lookback, so the same
+# ``as_of`` produces the same vector (and the same feature_hash) for any
+# history window with at least that many bars.
 # engine: "A" technical, "B" factor, "H" cross-asset.
 # ---------------------------------------------------------------------------
 FEATURE_SPECS = [
@@ -158,14 +202,16 @@ FEATURE_SPECS = [
      "inputs": ["close"],
      "description": "SMA(20)/SMA(50)-1 - golden/death cross distance.",
      "compute": _f_sma_cross},
-    {"name": "vwap_distance", "engine": "A", "lookback_bars": None,
+    {"name": "vwap_distance", "engine": "A", "lookback_bars": 20,
      "inputs": ["high", "low", "close", "volume"],
-     "description": "Close/VWAP-1. Daily bars: anchored cumulative VWAP "
-                    "fallback (see indicators.vwap); uses full history.",
+     "description": "Close/20-bar VWAP-1. Fixed trailing window (not the "
+                    "anchored full-history VWAP), so the value and the "
+                    "feature_hash do not depend on where the history starts.",
      "compute": _f_vwap_dist},
-    {"name": "obv_slope_20", "engine": "A", "lookback_bars": 40,
+    {"name": "obv_slope_20", "engine": "A", "lookback_bars": 21,
      "inputs": ["close", "volume"],
-     "description": "20-bar OBV slope, normalized - accumulation/distribution.",
+     "description": "20-bar OBV slope anchored to a fixed 21-bar window and "
+                    "normalized by that window's volume - window-independent.",
      "compute": _f_obv_slope},
     {"name": "volume_zscore_20", "engine": "A", "lookback_bars": 21,
      "inputs": ["volume"],
@@ -211,6 +257,13 @@ FEATURE_SPECS = [
 
 SPEC_BY_NAME = {s["name"]: s for s in FEATURE_SPECS}
 
+# Longest registered lookback (momentum_252d -> 253 bars). The feature
+# vector is computed on at most this many trailing bars so that the same
+# ``as_of`` always yields the same values and the same feature_hash,
+# regardless of how much older history the caller passed in.
+MIN_HISTORY_BARS = max(int(s["lookback_bars"] or 0) for s in FEATURE_SPECS)
+assert MIN_HISTORY_BARS == 253, "MIN_HISTORY_BARS must cover every lookback"
+
 
 def _canonical_json(values: dict) -> str:
     """Sorted names, NaN -> null, floats rounded to 10dp."""
@@ -227,9 +280,15 @@ def build_features(df: pd.DataFrame, as_of) -> tuple:
 
     Returns ``(features, feature_hash, as_of_snapped)``:
       features: one-row DataFrame indexed by the snapped as-of timestamp,
-        one column per registered feature name.
+        one column per registered feature name. Its ``attrs`` record how
+        many bars were used (``history_bars_used``) and the bound
+        (``min_history_bars``).
       feature_hash: sha256 of the canonical feature JSON.
       as_of_snapped: the actual bar timestamp used (last bar <= as_of).
+
+    Only bars ``<= as_of`` are ever read, and at most the last
+    ``MIN_HISTORY_BARS`` of them, so the same ``as_of`` with at least that
+    much history always produces the same vector and hash.
 
     Raises ValueError if no bar exists ``<= as_of`` or the index is not a
     DatetimeIndex.
@@ -243,16 +302,39 @@ def build_features(df: pd.DataFrame, as_of) -> tuple:
     if truncated.empty:
         raise ValueError("no bars at or before as_of=%s" % as_of)
     snapped = truncated.index[-1]
+    # Bound the history to the longest registered lookback: same as_of and
+    # >= MIN_HISTORY_BARS of history -> identical values and identical hash.
+    history = truncated.tail(MIN_HISTORY_BARS)
 
     values = {}
+    errors: dict[str, str] = {}
     for spec in FEATURE_SPECS:
         try:
-            values[spec["name"]] = float(spec["compute"](truncated))
-        except Exception:
+            values[spec["name"]] = float(spec["compute"](history))
+        except (ValueError, KeyError, TypeError, ZeroDivisionError,
+                IndexError) as exc:
+            # A missing column / bad dtype / short window is an EXPECTED
+            # degradation -> NaN, but it is logged and reported: with B-1's
+            # old zero-fill this silent NaN was turned into a bullish
+            # component, so the producer's silence fed the consumer's
+            # optimism. ``values_error`` travels with the vector (and into
+            # the attrs) so a NaN can be explained.
+            errors[spec["name"]] = f"{type(exc).__name__}: {exc}"
             values[spec["name"]] = float("nan")
+            log.warning("feature %s failed on %d bars: %s: %s",
+                        spec["name"], len(history), type(exc).__name__, exc)
+        except Exception as exc:  # noqa: BLE001 - never break the vector
+            errors[spec["name"]] = f"UNEXPECTED {type(exc).__name__}: {exc}"
+            values[spec["name"]] = float("nan")
+            log.error("feature %s raised an UNEXPECTED %s: %s (reported as "
+                      "NaN and flagged in values_error)", spec["name"],
+                      type(exc).__name__, exc, exc_info=True)
 
     features = pd.DataFrame([values],
                             index=pd.DatetimeIndex([snapped], name="as_of"))
+    features.attrs["history_bars_used"] = int(len(history))
+    features.attrs["min_history_bars"] = int(MIN_HISTORY_BARS)
+    features.attrs["values_error"] = dict(errors)
     feature_hash = hashlib.sha256(
         _canonical_json(values).encode("utf-8")).hexdigest()
     return features, feature_hash, snapped
