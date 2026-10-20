@@ -37,11 +37,19 @@ def _stub_backtest(cfg: BacktestRequest, backtest_id: str) -> Dict:
         for i, e in enumerate(equity[::21])
     ]
     total = float(equity[-1] - 1)
+    # Sortino must divide by the TARGET downside deviation
+    # sqrt(mean(min(r - target, 0)^2)) over ALL periods, not by the standard
+    # deviation of the negative subset (the old formula here matched the bug
+    # fixed in argus_quant.backtest). target = 0 (no risk-free adjustment).
+    excess = rets
+    downside_dev = float(np.sqrt(np.mean(np.minimum(excess, 0.0) ** 2)))
+    sortino = (round(float(rets.mean() / downside_dev * np.sqrt(252)), 3)
+               if downside_dev > 0 else None)
     metrics = BacktestMetrics(
         cagr=round(float((1 + total) ** (252 / n_days) - 1), 4),
         total_return=round(total, 4),
         sharpe=round(float(rets.mean() / rets.std() * np.sqrt(252)), 3),
-        sortino=round(float(rets.mean() / rets[rets < 0].std() * np.sqrt(252)), 3),
+        sortino=sortino,
         max_drawdown=round(float((equity / np.maximum.accumulate(equity) - 1).min()), 4),
         win_rate=round(float((rets > 0).mean()), 3),
         profit_factor=round(float(rets[rets > 0].sum() / -rets[rets < 0].sum()), 3),

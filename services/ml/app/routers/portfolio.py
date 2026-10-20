@@ -76,6 +76,12 @@ def analyze_portfolio(body: PortfolioAnalyzeRequest, request: Request):
         raise HTTPException(status_code=422, detail=str(exc))
 
     conc = result["sector_concentration"]
+    # data_status is DERIVED by argus_quant from the coverage actually achieved
+    # (CONFIRMED only with a real beta/benchmark and >=252 bars, LIKELY with
+    # partial coverage, UNCONFIRMED without). It used to be hard-coded
+    # "CONFIRMED" here, which claimed real-price confidence even when beta was
+    # None and no benchmark was available.
+    status = result.get("data_status", "UNCONFIRMED")
     payload = PortfolioAnalysis(
         expected_return=result["expected_return"],
         volatility=result["volatility"],
@@ -95,11 +101,12 @@ def analyze_portfolio(body: PortfolioAnalyzeRequest, request: Request):
         factor_exposure=result["factor_exposure"],
         vol_target_sizing=result["vol_target_sizing"],
         stress_tests=result["stress_tests"],
-        data_status="CONFIRMED",
+        data_status=status,
         notes=[
             "Real daily prices (Yahoo Finance, cached under "
             "data/raw/). Buy-and-hold portfolio; weights float with "
             "prices.",
+            f"data_status={status}: {result.get('data_status_reason', '')}".rstrip(),
             result["var_note"],
             "Sectors from a static ticker map; unknown tickers -> "
             "'Unknown'.",
@@ -108,5 +115,5 @@ def analyze_portfolio(body: PortfolioAnalyzeRequest, request: Request):
             "Probabilistic estimate. Not investment advice.",
         ],
     )
-    return env(payload.model_dump(), "CONFIRMED", request,
+    return env(payload.model_dump(), status, request,
                as_of=result["as_of"])
