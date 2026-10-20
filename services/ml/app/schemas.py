@@ -145,6 +145,18 @@ class Prediction(BaseModel):
     engine_signals: Optional[Dict[str, Any]] = None  # per-engine detail
     pipeline: Optional[str] = None  # "live" | "synthetic_stub"
     calibrated: Optional[bool] = None  # isotonic map applied?
+    # UI score bars read by apps/web/app/stock/[ticker]/page.tsx. These are
+    # NOT model outputs: each one is a bounded rescaling of a real engine
+    # value and nothing here is invented. None means "not computable from
+    # real engine output for this record" -- the reason and the underlying
+    # data_status live in score_provenance. The exact per-field derivation
+    # is documented in routers/predictions.py::_score_fields.
+    trend_strength: Optional[float] = Field(default=None, ge=0, le=100)
+    momentum_score: Optional[float] = Field(default=None, ge=0, le=100)
+    fundamental_score: Optional[float] = Field(default=None, ge=0, le=100)
+    risk_score: Optional[float] = Field(default=None, ge=0, le=100)
+    volatility_score: Optional[float] = Field(default=None, ge=0, le=100)
+    score_provenance: Optional[Dict[str, Any]] = None
 
 
 class PredictionRequest(BaseModel):

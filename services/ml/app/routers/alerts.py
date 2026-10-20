@@ -34,7 +34,7 @@ import pandas as pd
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
-from app import data_stub, delivery
+from app import authz, data_stub, delivery
 from app import db as _pg
 from app.quant_compat import QUANT_AVAILABLE, quant_attr
 from app.routers import env, not_found
@@ -155,8 +155,11 @@ def _row_to_alert(r: Dict[str, Any]) -> Dict[str, Any]:
 @router.get("/alerts")
 def list_alerts(request: Request, alert_type: str = "",
                 ticker: str = "", limit: int = 50):
-    q = "SELECT * FROM alerts WHERE 1=1"
-    params: List[Any] = []
+    # Ownership: alerts are per-user. The verified subject is mandatory; the
+    # old code listed EVERY user's alerts because nothing filtered by owner.
+    subject = authz.current_subject(request)
+    q = "SELECT * FROM alerts WHERE user_id = ?"
+    params: List[Any] = [subject]
     if alert_type:
         q += " AND alert_type = ?"
         params.append(alert_type)
@@ -172,27 +175,34 @@ def list_alerts(request: Request, alert_type: str = "",
 @router.post("/alert-rules", status_code=201)
 def create_alert_rule(body: AlertRuleCreate, request: Request):
     rule_id = uuid.uuid4().hex[:12]
+    subject = authz.current_subject(request)
     _write(
         "INSERT INTO alert_rules (id, user_id, rule_type, ticker, params,"
         " is_active, created_at) VALUES (?,?,?,?,?,?,?)",
-        (rule_id, "local", body.rule_type,
+        (rule_id, subject, body.rule_type,
          body.ticker.upper() if body.ticker else None,
          json.dumps(body.params or {}), 1, _utcnow()))
-    row = _one("SELECT * FROM alert_rules WHERE id = ?", (rule_id,))
+    row = _one("SELECT * FROM alert_rules WHERE id = ? AND user_id = ?",
+               (rule_id, subject))
     data = _row_to_rule(row)
     return env(data, "UNCONFIRMED", request)
 
 
 @router.get("/alert-rules")
 def list_alert_rules(request: Request):
-    rows = _all("SELECT * FROM alert_rules ORDER BY created_at DESC")
+    subject = authz.current_subject(request)
+    rows = _all("SELECT * FROM alert_rules WHERE user_id = ?"
+                " ORDER BY created_at DESC", (subject,))
     data = [_row_to_rule(r) for r in rows]
     return env(data, "UNCONFIRMED", request)
 
 
 @router.delete("/alert-rules/{rule_id}", status_code=200)
 def delete_alert_rule(rule_id: str, request: Request):
-    n = _write("DELETE FROM alert_rules WHERE id = ?", (rule_id,))
+    # Scope the DELETE by owner so one user cannot delete another's rule.
+    subject = authz.current_subject(request)
+    n = _write("DELETE FROM alert_rules WHERE id = ? AND user_id = ?",
+               (rule_id, subject))
     if n == 0:
         not_found(f"alert rule {rule_id} not found")
     return env({"deleted": rule_id}, "UNCONFIRMED", request)
@@ -234,14 +244,18 @@ def evaluate_alerts(body: EvaluateRequest, request: Request):
             status_code=503,
             detail="argus_quant not available; rule evaluation unavailable "
                    "in this build (no quant logic is duplicated here).")
+    # Only evaluate the caller's own rules, and persist fired alerts to them.
+    subject = authz.current_subject(request)
     if body.rule_id:
         rows = _all(
-            "SELECT * FROM alert_rules WHERE id = ? AND is_active = 1",
-            (body.rule_id,))
+            "SELECT * FROM alert_rules WHERE id = ? AND is_active = 1"
+            " AND user_id = ?",
+            (body.rule_id, subject))
         if not rows:
             not_found(f"alert rule {body.rule_id} not found")
     else:
-        rows = _all("SELECT * FROM alert_rules WHERE is_active = 1")
+        rows = _all("SELECT * FROM alert_rules WHERE is_active = 1"
+                    " AND user_id = ?", (subject,))
     rules = [_row_to_rule(r) for r in rows]
 
     fired: List[Dict[str, Any]] = []
@@ -273,7 +287,7 @@ def evaluate_alerts(body: EvaluateRequest, request: Request):
             "INSERT INTO alerts (id, user_id, created_at, alert_type,"
             " ticker, title, body, severity, channel, rule_id)"
             " VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (alert["id"], "local", alert["created_at"],
+            (alert["id"], subject, alert["created_at"],
              alert["alert_type"], alert["ticker"], alert["title"],
              alert["body"], alert["severity"], "IN_APP", r["id"]))
         fired.append(_row_to_alert_sqlite(alert))
@@ -307,8 +321,9 @@ def deliver_alert(alert_id: str, body: DeliverRequest, request: Request):
     always-on channel.
     """
     row = _one("SELECT * FROM alerts WHERE id = ?", (alert_id,))
-    if row is None:
-        not_found(f"alert {alert_id} not found")
+    # Ownership check: conceal another user's alert as 404 so ids cannot be
+    # enumerated (authz.ensure_owner raises 404 for both missing and foreign).
+    authz.ensure_owner(row, request, conceal=True)
     alert = _row_to_alert(row)
     if body.channel == "push":
         result = delivery.send_push(alert)
