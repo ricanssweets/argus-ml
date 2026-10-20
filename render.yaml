@@ -10,6 +10,12 @@ services:
     dockerCommand: /usr/local/bin/start.sh
     healthCheckPath: /health
     plan: free
+    # Migrations run as a SEPARATE deploy step, before traffic is switched:
+    # a failure here blocks the release (MIGRATIONS_FATAL=1 below) instead of
+    # leaving the service unable to bind. The container entrypoint (start.sh)
+    # still runs `python -m app.migrate` defensively and ignores its exit code,
+    # so a database outage can never keep /health from answering.
+    preDeployCommand: python -m app.migrate
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -30,4 +36,47 @@ services:
       - key: ONESIGNAL_API_KEY
         sync: false
       - key: AUTH_DISABLED
-        value: "true"
+        # MUST stay "false" in production: with AUTH_DISABLED=true the process
+        # refuses to start unless a local/dev opt-in is present (fail-closed
+        # auth guard in app/middleware.py). An explicit "false" is
+        # documentation, not an omission.
+        value: "false"
+      - key: ARGUS_ENV
+        # Production intent is explicit so the auth guard never mistakes this
+        # process for a local/dev one, and so /health cannot silently degrade
+        # into anonymous traffic.
+        value: "production"
+      - key: CORS_ORIGINS
+        # Outside local/dev the app refuses to start without an explicit CORS
+        # allowlist (fail-closed guard in app/middleware.py). Comma-separated
+        # origins; add every front-end that must call this API.
+        value: "https://argus-web-jnbr.onrender.com"
+      # Fail the preDeployCommand (not the running service) when a migration
+      # or a checksum drift is detected.
+      - key: MIGRATIONS_FATAL
+        value: "1"
+      # Bounded DB connect timeout (seconds) for migrate.py and the /health probe.
+      - key: ARGUS_DB_CONNECT_TIMEOUT
+        value: "5"
+      # Proxy allowlist for client-IP resolution. app/middleware.py honours
+      # X-Forwarded-For ONLY for peers inside TRUSTED_PROXIES (otherwise every
+      # client collapses into the proxy's single rate-limit bucket = self-DoS).
+      #
+      # Why loopback: Render's published IP list is explicitly OUTBOUND-ONLY
+      # (https://render.com/docs/outbound-ip-addresses) and therefore NOT a
+      # valid inbound trust list — using it would be a guess. Render fronts the
+      # service with a same-host reverse proxy, and a remote client can never
+      # appear as 127.0.0.1, so trusting loopback is FAIL-SAFE: if the real
+      # peer is something else, XFF stays ignored exactly as today (no bypass),
+      # and if it is loopback, client IPs resolve correctly.
+      # To confirm/replace: the audit log now records the observed peer, e.g.
+      #   {"path": "/api/v1/...", "client": "<peer ip>", ...}
+      # Add that address (or its private range, e.g. 10.0.0.0/8) here.
+      - key: TRUSTED_PROXIES
+        value: "127.0.0.1/32,::1/128"
+      # uvicorn --proxy-headers trust list. Kept at uvicorn's safe default
+      # (same-host proxy only): the real client resolution is done by the
+      # middleware using TRUSTED_PROXIES above. Set to the exact proxy IP if a
+      # same-host proxy is used; never "*".
+      - key: FORWARDED_ALLOW_IPS
+        value: "127.0.0.1"

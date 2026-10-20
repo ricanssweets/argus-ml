@@ -56,18 +56,32 @@ def _loud_unset_warning() -> None:
 
 
 def get_pool():
-    """Process-wide ConnectionPool, or None when no DSN is configured."""
+    """Process-wide ConnectionPool, or None when no DSN is configured.
+
+    Degrades to ``None`` (the in-memory/local path) on ANY pool problem —
+    including an import failure — because this module's contract is that the
+    database must never break serving. A bare ``from psycopg_pool import ...``
+    used to raise ModuleNotFoundError out of every caller when the optional
+    pool extra was missing from the image, taking down routes that are
+    perfectly able to serve from cache.
+    """
     global _pool
     url = database_url()
     if not url:
         _loud_unset_warning()
         return None
     if _pool is None:
-        from psycopg_pool import ConnectionPool
-        _pool = ConnectionPool(
-            conninfo=url, min_size=1, max_size=10,
-            timeout=5, kwargs={"connect_timeout": 5},
-        )
+        try:
+            from psycopg_pool import ConnectionPool
+            _pool = ConnectionPool(
+                conninfo=url, min_size=1, max_size=10,
+                timeout=5, kwargs={"connect_timeout": 5},
+            )
+        except Exception as exc:  # noqa: BLE001 — never break serving
+            log.error("Postgres pool unavailable (%s: %s) — serving without "
+                      "database persistence", type(exc).__name__, exc)
+            _pool = None
+            return None
         log.info("Postgres connection pool opened (min=1 max=10)")
     return _pool
 
