@@ -3,7 +3,7 @@ import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Td } from "@/components/ui/table";
-import { DemoBadge } from "@/components/DemoBadge";
+import { DemoBadge, DataErrorBanner, SyntheticTag, provenanceOf } from "@/components/DemoBadge";
 import { RegimeChart } from "@/components/charts/RegimeChart";
 import { DISCLAIMER, fmtDateTime, pct } from "@/lib/format";
 
@@ -21,12 +21,19 @@ export default async function MarketRegimePage() {
     api.getRegimeHistory(365),
   ]);
   const r = env.data;
-  const rawHistory = hist.meta.demo ? r.history : hist.data.history;
+  const prov = provenanceOf(env.meta, hist.meta);
+  // Both the demo regime and the live API may omit `history`/`drivers`.
+  const rawHistory = hist.meta.demo
+    ? r.history ?? []
+    : hist.data.history ?? [];
   // Normalize confidence to 0–1 (CSV/API use 0–100, demo regime uses 0–1).
   const history = rawHistory.map((h: { time: string; regime: string; confidence: number; data_status?: string }) => ({
-    time: h.time,
-    regime: h.regime,
-    confidence: h.confidence > 1 ? h.confidence / 100 : h.confidence,
+    time: h.time ?? "—",
+    regime: h.regime ?? "UNKNOWN",
+    confidence:
+      typeof h.confidence === "number" && h.confidence > 1
+        ? h.confidence / 100
+        : h.confidence,
     data_status: (h as { data_status?: string }).data_status ?? "UNCONFIRMED",
   }));
   const histDemo = hist.meta.demo;
@@ -42,8 +49,10 @@ export default async function MarketRegimePage() {
             {fmtDateTime(env.meta.as_of)} UTC · status {env.meta.data_status}
           </p>
         </div>
-        {env.meta.demo && <DemoBadge asOf={env.meta.as_of} />}
+        {prov.demo && <DemoBadge asOf={prov.asOf} error={prov.error} />}
       </div>
+
+      <DataErrorBanner error={prov.error} empty={prov.empty && !prov.demo} />
 
       {!histDemo && latest && (
         <Card
@@ -66,6 +75,7 @@ export default async function MarketRegimePage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card title="Current regime" subtitle="Classified by the E engine">
+          {prov.demo && <SyntheticTag className="mb-2" />}
           <div className="flex items-center gap-4">
             <Badge tone={tone(r.regime)} className="text-sm">
               {r.regime}
@@ -91,7 +101,7 @@ export default async function MarketRegimePage() {
           className="lg:col-span-2"
         >
           <ul className="space-y-3">
-            {r.drivers.map((d, i) => (
+            {(r.drivers ?? []).map((d, i) => (
               <li key={i} className="flex gap-3 text-sm text-slate-300">
                 <span className="font-mono text-bronze-400">
                   {String(i + 1).padStart(2, "0")}
@@ -107,10 +117,12 @@ export default async function MarketRegimePage() {
         title="Regime history — 12 months"
         subtitle="Daily classification with confidence (bar color = regime)"
       >
+        {prov.demo && <SyntheticTag className="mb-2" />}
         <RegimeChart history={history.slice(-180)} />
       </Card>
 
       <Card title="Recent regime spells" subtitle="Latest 10 daily rows">
+        {prov.demo && <SyntheticTag className="mb-2" />}
         <Table head={["Date", "Regime", "Confidence", "Status"]}>
           {[...history].reverse().slice(0, 10).map((h) => (
             <tr key={h.time} className="hover:bg-ink-800/50">

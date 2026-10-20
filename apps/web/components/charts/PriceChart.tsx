@@ -28,12 +28,14 @@ export function PriceChart({
 }: {
   bars: PriceBar[];
   band: ForwardBand[];
-  currentPrice: number;
+  /** Nullable: the live API may omit Asset.price. */
+  currentPrice: number | null;
 }) {
-  const ma50 = movingAverage(bars, 50);
-  const ma200 = movingAverage(bars, 200);
-  const hist = bars.map((b, i) => ({
-    label: b.time.slice(5),
+  const safeBars = Array.isArray(bars) ? bars : [];
+  const ma50 = movingAverage(safeBars, 50);
+  const ma200 = movingAverage(safeBars, 200);
+  const hist = safeBars.map((b, i) => ({
+    label: (b.time ?? "").slice(5),
     close: b.close,
     ma50: ma50[i],
     ma200: ma200[i],
@@ -41,16 +43,28 @@ export function PriceChart({
     high: null,
     low: null,
   }));
-  const fwd = band.map((f) => ({
+  const base = typeof currentPrice === "number" && Number.isFinite(currentPrice)
+    ? currentPrice
+    : null;
+  const fwd = (Array.isArray(band) ? band : []).map((f) => ({
     label: f.label,
     close: null,
     ma50: null,
     ma200: null,
-    expected: f.expected === null ? null : currentPrice * (1 + f.expected),
-    high: f.high === null ? null : currentPrice * (1 + f.high),
-    low: f.low === null ? null : currentPrice * (1 + f.low),
+    expected:
+      base !== null && f.expected !== null ? base * (1 + f.expected) : null,
+    high: base !== null && f.high !== null ? base * (1 + f.high) : null,
+    low: base !== null && f.low !== null ? base * (1 + f.low) : null,
   }));
   const data = [...hist.slice(-180), ...fwd];
+
+  if (data.length === 0) {
+    return (
+      <div className="flex h-80 w-full items-center justify-center rounded-lg border border-dashed border-ink-700 text-sm text-slate-500">
+        No price series available — the API returned no usable bars.
+      </div>
+    );
+  }
 
   return (
     <div className="h-80 w-full">

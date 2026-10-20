@@ -5,7 +5,13 @@ import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Td } from "@/components/ui/table";
-import { DemoBadge } from "@/components/DemoBadge";
+import {
+  DataErrorBanner,
+  DemoBadge,
+  SyntheticTag,
+  provenanceOf,
+  type Provenance,
+} from "@/components/DemoBadge";
 import { fmtDateTime } from "@/lib/format";
 import type { AlertItem, AlertRule } from "@/lib/types";
 
@@ -24,8 +30,7 @@ const RULE_TYPES = [
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [rules, setRules] = useState<AlertRule[]>([]);
-  const [demo, setDemo] = useState(false);
-  const [asOf, setAsOf] = useState("");
+  const [prov, setProv] = useState<Provenance | null>(null);
   const [form, setForm] = useState({ rule_type: "breakout", ticker: "NVDA", params: "{}" });
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -33,8 +38,7 @@ export default function AlertsPage() {
     const [a, r] = await Promise.all([api.getAlerts(), api.getAlertRules()]);
     setAlerts(a.data);
     setRules(r.data);
-    setDemo(!!a.meta.demo || !!r.meta.demo);
-    setAsOf(a.meta.as_of);
+    setProv(provenanceOf(a.meta, r.meta));
   }
 
   useEffect(() => {
@@ -45,8 +49,16 @@ export default function AlertsPage() {
     setMsg(null);
     try {
       const params = JSON.parse(form.params || "{}");
-      await api.createAlertRule(form.rule_type, form.ticker.toUpperCase(), params);
-      setMsg("Rule created.");
+      const env = await api.createAlertRule(
+        form.rule_type,
+        form.ticker.toUpperCase(),
+        params
+      );
+      setMsg(
+        env.meta.demo
+          ? "NOT SAVED — the API was unreachable, so this rule only exists in the local synthetic demo fallback."
+          : "Rule created."
+      );
       load();
     } catch (e) {
       setMsg(e instanceof Error ? `Failed: ${e.message}` : "Failed.");
@@ -62,8 +74,10 @@ export default function AlertsPage() {
             In-app delivery is live · push/email are explicit stubs until configured
           </p>
         </div>
-        {demo && <DemoBadge asOf={asOf} />}
+        {prov?.demo && <DemoBadge asOf={prov.asOf} error={prov.error} />}
       </div>
+
+      <DataErrorBanner error={prov?.error} empty={prov?.empty && !prov?.demo} />
 
       <Card title="New alert rule" subtitle="Evaluated by the Phase-7 rule engine">
         <div className="flex flex-wrap gap-3">
@@ -99,6 +113,7 @@ export default function AlertsPage() {
       </Card>
 
       <Card title={`Alert rules (${rules.length})`} subtitle="Point-in-time evaluation, no lookahead">
+        {prov?.demo && <SyntheticTag className="mb-2" />}
         <Table head={["ID", "Type", "Ticker", "Params", "Active"]}>
           {rules.map((r) => (
             <tr key={r.id} className="hover:bg-ink-800/50">
@@ -113,6 +128,7 @@ export default function AlertsPage() {
       </Card>
 
       <Card title={`Alerts (${alerts.length})`} subtitle="In-app channel">
+        {prov?.demo && <SyntheticTag className="mb-2" />}
         <Table head={["When", "Type", "Ticker", "Title", "Severity"]}>
           {alerts.map((a) => (
             <tr key={a.id} className="hover:bg-ink-800/50">

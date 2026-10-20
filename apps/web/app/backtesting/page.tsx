@@ -2,14 +2,29 @@
 
 import { useState } from "react";
 import { api, DEFAULT_BACKTEST_CONFIG } from "@/lib/api";
-import type { BacktestConfig, BacktestResult } from "@/lib/types";
+import type {
+  BacktestConfig,
+  BacktestResult,
+  Envelope,
+} from "@/lib/types";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, Td } from "@/components/ui/table";
-import { DemoBadge } from "@/components/DemoBadge";
+import {
+  DataErrorBanner,
+  DemoBadge,
+  SyntheticTag,
+  provenanceOf,
+} from "@/components/DemoBadge";
 import { EquityChart } from "@/components/charts/EquityChart";
-import { DISCLAIMER, pct, ret1 } from "@/lib/format";
+import {
+  DISCLAIMER,
+  count0,
+  num2,
+  pct,
+  ret1,
+} from "@/lib/format";
 
 const UNIVERSES = ["SP500", "NASDAQ100", "RUSSELL2000", "SECTOR_TECH", "SP500_VALUE"];
 
@@ -35,7 +50,7 @@ const inputCls =
 
 export default function BacktestingPage() {
   const [cfg, setCfg] = useState<BacktestConfig>(DEFAULT_BACKTEST_CONFIG);
-  const [result, setResult] = useState<BacktestResult | null>(null);
+  const [env, setEnv] = useState<Envelope<BacktestResult> | null>(null);
   const [running, setRunning] = useState(false);
 
   const set = (k: keyof BacktestConfig, v: string | number | boolean) =>
@@ -44,13 +59,15 @@ export default function BacktestingPage() {
   async function run() {
     setRunning(true);
     try {
-      const r = await api.runBacktest(cfg);
-      setResult(r);
+      const e = await api.runBacktest(cfg);
+      setEnv(e);
     } finally {
       setRunning(false);
     }
   }
 
+  const result = env?.data;
+  const prov = env ? provenanceOf(env.meta) : null;
   const m = result?.metrics;
 
   return (
@@ -63,8 +80,12 @@ export default function BacktestingPage() {
             store only — backtests never touch production records.
           </p>
         </div>
-        {result && <DemoBadge />}
+        {prov?.demo && <DemoBadge asOf={prov.asOf} error={prov.error} />}
       </div>
+
+      {prov && (
+        <DataErrorBanner error={prov.error} empty={prov.empty && !prov.demo} />
+      )}
 
       <Card
         title="Strategy configuration"
@@ -157,75 +178,79 @@ export default function BacktestingPage() {
           <Button onClick={run} disabled={running}>
             {running ? "Running…" : "Run backtest"}
           </Button>
-          {result && <Badge tone="demo">Demo result · synthetic</Badge>}
+          {prov?.demo && <Badge tone="demo">DEMO DATA · synthetic</Badge>}
         </div>
       </Card>
 
-      {result && m && (
+      {result && (
         <>
           <Card
             title={`Equity curve — ${result.config.name}`}
             subtitle={`${result.config.universe} · ${result.config.start} → ${result.config.end} · net of costs`}
           >
+            {prov?.demo && <SyntheticTag className="mb-2" />}
             <EquityChart equity={result.equity} />
           </Card>
 
           <Card title="Metrics" subtitle="Full set — no cherry-picking">
+            {prov?.demo && <SyntheticTag className="mb-2" />}
             <Table head={["Metric", "Value", "Metric", "Value"]}>
               <tr className="hover:bg-ink-800/50">
                 <Td className="text-slate-400">CAGR</Td>
                 <Td className="font-mono font-semibold text-white">
-                  {ret1(m.cagr)}
+                  {ret1(m?.cagr)}
                 </Td>
                 <Td className="text-slate-400">Total return</Td>
                 <Td className="font-mono text-slate-200">
-                  {ret1(m.total_return)}
+                  {ret1(m?.total_return)}
                 </Td>
               </tr>
               <tr className="hover:bg-ink-800/50">
                 <Td className="text-slate-400">Sharpe</Td>
                 <Td className="font-mono font-semibold text-white">
-                  {m.sharpe.toFixed(2)}
+                  {num2(m?.sharpe)}
                 </Td>
                 <Td className="text-slate-400">Sortino</Td>
                 <Td className="font-mono text-slate-200">
-                  {m.sortino.toFixed(2)}
+                  {num2(m?.sortino)}
                 </Td>
               </tr>
               <tr className="hover:bg-ink-800/50">
                 <Td className="text-slate-400">Max drawdown</Td>
-                <Td className="font-mono text-rose-300">{ret1(m.max_drawdown)}</Td>
+                <Td className="font-mono text-rose-300">
+                  {ret1(m?.max_drawdown)}
+                </Td>
                 <Td className="text-slate-400">Win rate</Td>
-                <Td className="font-mono text-slate-200">{pct(m.win_rate)}</Td>
+                <Td className="font-mono text-slate-200">{pct(m?.win_rate)}</Td>
               </tr>
               <tr className="hover:bg-ink-800/50">
                 <Td className="text-slate-400">Profit factor</Td>
                 <Td className="font-mono text-slate-200">
-                  {m.profit_factor.toFixed(2)}
+                  {num2(m?.profit_factor)}
                 </Td>
                 <Td className="text-slate-400">Expectancy / month</Td>
                 <Td className="font-mono text-slate-200">
-                  {ret1(m.expectancy)}
+                  {ret1(m?.expectancy)}
                 </Td>
               </tr>
               <tr className="hover:bg-ink-800/50">
                 <Td className="text-slate-400">Trades</Td>
                 <Td className="font-mono text-slate-200">
-                  {m.n_trades.toLocaleString()}
+                  {count0(m?.n_trades)}
                 </Td>
                 <Td className="text-slate-400">Exposure</Td>
-                <Td className="font-mono text-slate-200">{pct(m.exposure)}</Td>
+                <Td className="font-mono text-slate-200">{pct(m?.exposure)}</Td>
               </tr>
               <tr className="hover:bg-ink-800/50">
                 <Td className="text-slate-400">Alpha (vs SPY)</Td>
-                <Td className="font-mono text-slate-200">{ret1(m.alpha)}</Td>
+                <Td className="font-mono text-slate-200">{ret1(m?.alpha)}</Td>
                 <Td className="text-slate-400">Beta</Td>
-                <Td className="font-mono text-slate-200">
-                  {m.beta.toFixed(2)}
-                </Td>
+                <Td className="font-mono text-slate-200">{num2(m?.beta)}</Td>
               </tr>
             </Table>
-            <p className="mt-4 text-xs italic text-slate-500">{DISCLAIMER}</p>
+            <p className="mt-4 text-xs italic text-slate-500">
+              {result.disclaimer || DISCLAIMER}
+            </p>
           </Card>
         </>
       )}

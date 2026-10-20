@@ -8,12 +8,37 @@ export type DataStatus =
   | "MISSING"
   | "SYNTHETIC_FIXTURE";
 
+/**
+ * Why a live fetch did not deliver data. Recorded by lib/api.ts so the UI can
+ * distinguish "API down" / "401" / "500" / "timeout" / "no records" from a
+ * success instead of silently rendering synthetic numbers as if real.
+ */
+export type DataErrorKind =
+  | "config" // NEXT_PUBLIC_ARGUS_API_URL missing in a production build
+  | "network" // DNS / connection refused / offline
+  | "timeout" // AbortController fired
+  | "http" // non-2xx status
+  | "bad_envelope" // body did not match { data, meta }
+  | "empty" // envelope present but the record set was empty where one was required
+  | "unknown";
+
+export interface DataError {
+  kind: DataErrorKind;
+  /** HTTP status when kind === "http". */
+  status?: number;
+  message: string;
+}
+
 export interface Meta {
   as_of: string;
   data_status: DataStatus;
   request_id: string;
   /** Present and true only when the payload is synthetic demo data. */
   demo?: boolean;
+  /** Present only when the live call failed; the payload is then synthetic. */
+  error?: DataError;
+  /** True when the API answered successfully with an empty record set. */
+  empty?: boolean;
 }
 
 export interface Envelope<T> {
@@ -23,17 +48,27 @@ export interface Envelope<T> {
 
 export interface Asset {
   ticker: string;
-  name: string;
+  name: string | null;
   asset_type: "STOCK" | "ETF" | "INDEX" | "CRYPTO" | "FUTURE";
-  exchange: string;
-  currency: string;
-  sector: string;
-  industry: string;
-  price: number;
-  change: number;
-  change_pct: number;
-  mkt_cap: number;
+  exchange: string | null;
+  currency: string | null;
+  sector: string | null;
+  industry: string | null;
+  /** Nullable: the live API (AssetDetail) omits price when no bar is stored. */
+  price: number | null;
+  prev_close?: number | null;
+  change: number | null;
+  /**
+   * API CONTRACT (services/ml/app/routers/assets.py:45): `change_pct` is
+   * ALREADY a percent — 1.23 means +1.23%, NOT a fraction. Never pass it to
+   * fraction-based formatters such as ret1(); use retPct1() (lib/format.ts).
+   */
+  change_pct: number | null;
+  mkt_cap: number | null;
+  /** The live API names this field `market_cap`; api.ts mirrors both. */
+  market_cap?: number | null;
   data_status: DataStatus;
+  disclaimer?: string;
 }
 
 export interface PriceBar {
@@ -53,23 +88,24 @@ export interface Prediction {
   regime: string;
   p_positive: number;
   p_negative: number;
-  expected_return: number;
-  expected_vol: number;
-  expected_high: number;
-  expected_low: number;
-  ci: [number, number];
-  downside_risk: number;
-  upside_potential: number;
-  risk_reward: number;
+  /** All optional: the live API marks them Optional[...] (schemas.py Prediction). */
+  expected_return?: number | null;
+  expected_vol?: number | null;
+  expected_high?: number | null;
+  expected_low?: number | null;
+  ci?: number[] | null;
+  downside_risk?: number | null;
+  upside_potential?: number | null;
+  risk_reward?: number | null;
   composite_score: number; // 0–100
-  trend_strength: number;
-  momentum_score: number;
-  fundamental_score: number;
-  risk_score: number;
-  volatility_score: number;
+  trend_strength?: number | null;
+  momentum_score?: number | null;
+  fundamental_score?: number | null;
+  risk_score?: number | null;
+  volatility_score?: number | null;
   confidence: number; // 0–100, setup quality (NOT probability)
   data_status: DataStatus;
-  explanation: {
+  explanation?: {
     reasons: string[];
     risks: string[];
     invalidated_if: string[];
@@ -101,33 +137,57 @@ export interface ScannerRow {
 export interface MarketRegime {
   regime: string;
   confidence: number; // 0–1
-  drivers: string[];
-  history: { time: string; regime: string; confidence: number }[];
+  /** Optional: the live API defaults both to [] and may omit them. */
+  drivers?: string[];
+  history?: { time: string; regime: string; confidence: number }[];
 }
 
+/**
+ * Model registry row. The live /models endpoint returns MODEL_METADATA only —
+ * brier / roc_auc / cal_error / n are frequently absent (schemas.py
+ * ModelVersionInfo has none of them), so every field beyond version/status is
+ * optional and every consumer must guard before formatting.
+ */
 export interface ModelVersionRow {
   version: string;
   status: "EXPERIMENT" | "STAGING" | "CHALLENGER" | "CHAMPION" | "RETIRED";
-  horizons: number[];
-  brier: number;
-  roc_auc: number;
-  cal_error: number;
-  n: number;
+  horizons?: number[];
+  brier?: number | null;
+  roc_auc?: number | null;
+  /** Canonical name used by this UI. */
+  cal_error?: number | null;
+  /** Name used by the live ModelMetrics schema; api.ts mirrors it into cal_error. */
+  calibration_error?: number | null;
+  n?: number | null;
+  family?: string;
+  weights_are_priors?: boolean;
+  data_status?: DataStatus;
 }
 
+/**
+ * Canonical calibration bucket used by the chart and table. api.ts normalizes
+ * every API variant ({bin,n,mean_predicted,observed_rate} and/or
+ * {predicted,observed}) into these fields; null means "not provided" and must
+ * never become NaN in the chart.
+ */
 export interface CalibrationBucket {
-  predicted: number; // mean predicted P per bucket
-  observed: number; // observed frequency
-  n: number;
+  /** Mean predicted probability for the bin (from `mean_predicted` or `predicted`). */
+  predicted: number | null;
+  /** Observed frequency (from `observed_rate` or `observed`). */
+  observed: number | null;
+  /** Sample count. */
+  n: number | null;
+  /** Raw bucket edges [lo, hi] when the API provides `bin`. */
+  bin?: [number, number] | null;
 }
 
 export interface DegradationFlag {
-  detected_at: string;
-  model_version: string;
-  horizon: number;
-  metric: string;
-  baseline: number;
-  current: number;
+  detected_at?: string | null;
+  model_version?: string | null;
+  horizon?: number | null;
+  metric?: string | null;
+  baseline?: number | null;
+  current?: number | null;
   severity: "WATCH" | "WARN" | "CRITICAL";
 }
 
@@ -213,21 +273,29 @@ export interface BacktestConfig {
   allow_short: boolean;
 }
 
+export interface BacktestMetrics {
+  cagr?: number | null;
+  total_return?: number | null;
+  sharpe?: number | null;
+  sortino?: number | null;
+  max_drawdown?: number | null;
+  win_rate?: number | null;
+  profit_factor?: number | null;
+  expectancy?: number | null;
+  n_trades?: number | null;
+  exposure?: number | null;
+  alpha?: number | null;
+  beta?: number | null;
+  benchmark?: string;
+}
+
 export interface BacktestResult {
   equity: { time: string; strategy: number; benchmark: number }[];
-  metrics: {
-    cagr: number;
-    total_return: number;
-    sharpe: number;
-    sortino: number;
-    max_drawdown: number;
-    win_rate: number;
-    profit_factor: number;
-    expectancy: number;
-    n_trades: number;
-    exposure: number;
-    alpha: number;
-    beta: number;
-  };
+  /** Optional: the live API returns Optional[BacktestMetrics]. */
+  metrics?: BacktestMetrics | null;
   config: BacktestConfig;
+  data_status?: DataStatus;
+  disclaimer?: string;
+  notes?: string[];
+  status?: string;
 }

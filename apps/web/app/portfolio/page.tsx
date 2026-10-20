@@ -5,7 +5,13 @@ import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Td } from "@/components/ui/table";
-import { DemoBadge } from "@/components/DemoBadge";
+import {
+  DataErrorBanner,
+  DemoBadge,
+  SyntheticTag,
+  provenanceOf,
+  type Provenance,
+} from "@/components/DemoBadge";
 import { DISCLAIMER, pct, ret1, ratio1 } from "@/lib/format";
 import type { PortfolioAnalysis, PortfolioPosition } from "@/lib/types";
 
@@ -22,8 +28,7 @@ export default function PortfolioPage() {
   const [text, setText] = useState("NVDA:10\nAAPL:10\nMSFT:10");
   const [result, setResult] = useState<{
     data: PortfolioAnalysis;
-    demo: boolean;
-    as_of: string;
+    prov: Provenance;
   } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +48,7 @@ export default function PortfolioPage() {
         .filter((p) => p.ticker && p.qty !== 0);
       if (!positions.length) throw new Error("Enter at least one TICKER:qty line.");
       const env = await api.analyzePortfolio(positions);
-      setResult({ data: env.data, demo: !!env.meta.demo, as_of: env.meta.as_of });
+      setResult({ data: env.data, prov: provenanceOf(env.meta) });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Analysis failed.");
     } finally {
@@ -62,8 +67,17 @@ export default function PortfolioPage() {
             Risk, stress scenarios and factor exposure on real prices
           </p>
         </div>
-        {result?.demo && <DemoBadge asOf={result.as_of} />}
+        {result?.prov.demo && (
+          <DemoBadge asOf={result.prov.asOf} error={result.prov.error} />
+        )}
       </div>
+
+      {result && (
+        <DataErrorBanner
+          error={result.prov.error}
+          empty={result.prov.empty && !result.prov.demo}
+        />
+      )}
 
       <Card title="Positions" subtitle="One TICKER:qty per line">
         <textarea
@@ -85,6 +99,7 @@ export default function PortfolioPage() {
 
       {d && (
         <>
+          {result?.prov.demo && <SyntheticTag />}
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <Metric label="Beta (vs SPY)" value={d.beta?.toFixed(2) ?? "—"} />
             <Metric label="VaR 95% (daily)" value={d.var_95 != null ? pct(d.var_95) : "—"} />

@@ -14,12 +14,32 @@ import {
 import type { CalibrationBucket } from "@/lib/types";
 
 export function CalibrationChart({ buckets }: { buckets: CalibrationBucket[] }) {
-  const data = buckets.map((b) => ({
-    predicted: Math.round(b.predicted * 100),
-    observed: Math.round(b.observed * 100),
-    diagonal: Math.round(b.predicted * 100),
-    n: b.n,
-  }));
+  // Defensive: the live API may omit `observed_rate`/`mean_predicted` (or send
+  // a different bucket shape). Rows without both numbers are dropped so the
+  // chart can never receive NaN.
+  const data = buckets
+    .filter(
+      (b) =>
+        typeof b.predicted === "number" &&
+        Number.isFinite(b.predicted) &&
+        typeof b.observed === "number" &&
+        Number.isFinite(b.observed)
+    )
+    .map((b) => ({
+      predicted: Math.round((b.predicted as number) * 100),
+      observed: Math.round((b.observed as number) * 100),
+      diagonal: Math.round((b.predicted as number) * 100),
+      n: typeof b.n === "number" ? b.n : null,
+    }));
+
+  if (data.length === 0) {
+    return (
+      <div className="flex h-80 w-full items-center justify-center rounded-lg border border-dashed border-ink-700 text-sm text-slate-500">
+        No calibration data available — the API returned no usable buckets.
+      </div>
+    );
+  }
+
   return (
     <div className="h-80 w-full">
       <ResponsiveContainer width="100%" height="100%">

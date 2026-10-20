@@ -268,12 +268,12 @@ export function demoScanner(limit = 25): ScannerRow[] {
       const p = demoPrediction(a.ticker, 20);
       return {
         ticker: a.ticker,
-        name: a.name,
-        sector: a.sector,
+        name: a.name ?? a.ticker,
+        sector: a.sector ?? "",
         score: p.composite_score,
         p_positive: p.p_positive,
-        expected_return: p.expected_return,
-        risk_reward: p.risk_reward,
+        expected_return: p.expected_return ?? 0,
+        risk_reward: p.risk_reward ?? 0,
         setup: SETUPS[Math.floor(rng() * SETUPS.length)],
         horizon: 20,
       };

@@ -6,20 +6,37 @@ import { HORIZON_LABELS, HORIZONS } from "@/lib/demo-data";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Td } from "@/components/ui/table";
-import { DemoBadge } from "@/components/DemoBadge";
+import {
+  DataErrorBanner,
+  DemoBadge,
+  SyntheticTag,
+  provenanceOf,
+} from "@/components/DemoBadge";
 import { PriceChart, type ForwardBand } from "@/components/charts/PriceChart";
 import {
   DISCLAIMER,
   fmtDateTime,
   money,
   pct,
-  ret1,
   ratio1,
+  ret1,
+  retPct1,
   score0,
+  usd2,
 } from "@/lib/format";
 import type { Prediction } from "@/lib/types";
 
-function ScoreBar({ label, value }: { label: string; value: number }) {
+function ScoreBar({
+  label,
+  value,
+}: {
+  label: string;
+  value: number | null | undefined;
+}) {
+  const width =
+    typeof value === "number" && Number.isFinite(value)
+      ? Math.min(100, Math.max(0, value))
+      : 0;
   return (
     <div>
       <div className="mb-1 flex items-center justify-between text-xs">
@@ -31,7 +48,7 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
       <div className="h-1.5 overflow-hidden rounded-full bg-ink-700">
         <div
           className="h-full rounded-full bg-bronze-500"
-          style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
+          style={{ width: `${width}%` }}
         />
       </div>
     </div>
@@ -65,6 +82,11 @@ function ExplanationList({
             {it}
           </li>
         ))}
+        {items.length === 0 && (
+          <li className="text-sm text-slate-500">
+            Not provided by the API.
+          </li>
+        )}
       </ul>
     </div>
   );
@@ -91,18 +113,31 @@ export default async function StockPage({
     api.getPrices(ticker),
     api.getPredictions(ticker, HORIZONS),
   ]);
-  const isDemo = asset.meta.demo || prices.meta.demo || preds.meta.demo;
+  const prov = provenanceOf(asset.meta, prices.meta, preds.meta);
 
   const a = asset.data;
   const p20: Prediction | undefined = preds.data.find((p) => p.horizon === 20);
-  const chg = (a as any).change ?? (a.price - ((a as any).prev_close ?? a.price));
-  const chgUp = chg >= 0;
+  // `change` is not in the live AssetDetail schema; derive it when absent.
+  const chg =
+    a.change ??
+    (typeof a.price === "number" && typeof a.prev_close === "number"
+      ? a.price - a.prev_close
+      : null);
+  const chgUp = chg !== null ? chg >= 0 : true;
 
-  // Forward prediction band for the chart: expected path ± vol, 20 sessions
+  // Forward prediction band for the chart: expected path ± vol, 20 sessions.
+  // Every input is optional on the live API, so a missing value yields null
+  // instead of NaN.
   const band: ForwardBand[] = Array.from({ length: 20 }, (_, i) => {
     const frac = (i + 1) / 20;
-    const er = p20 ? p20.expected_return * frac : null;
-    const w = p20 ? p20.expected_vol * Math.sqrt(frac) * 0.9 : null;
+    const er =
+      p20 && typeof p20.expected_return === "number"
+        ? p20.expected_return * frac
+        : null;
+    const w =
+      p20 && typeof p20.expected_vol === "number"
+        ? p20.expected_vol * Math.sqrt(frac) * 0.9
+        : null;
     return {
       label: `+${i + 1}d`,
       expected: er,
@@ -120,8 +155,10 @@ export default async function StockPage({
         >
           ← Scanner
         </Link>
-        {isDemo && <DemoBadge asOf={asset.meta.as_of} />}
+        {prov.demo && <DemoBadge asOf={prov.asOf} error={prov.error} />}
       </div>
+
+      <DataErrorBanner error={prov.error} empty={prov.empty && !prov.demo} />
 
       {/* Header */}
       <Card>
@@ -130,27 +167,30 @@ export default async function StockPage({
             <div className="flex items-center gap-3">
               <h1 className="font-display text-3xl tracking-[0.08em] text-stone-100">{a.ticker}</h1>
               <Badge tone={chgUp ? "bull" : "bear"}>
-                {chgUp ? "+" : ""}
-                {ret1(a.change_pct)}
+                {retPct1(a.change_pct)}
               </Badge>
-              <Badge>{a.data_status}</Badge>
+              <Badge>{a.data_status ?? "UNKNOWN"}</Badge>
+              {prov.demo && <SyntheticTag />}
             </div>
-            <p className="mt-1 text-sm text-slate-400">{a.name}</p>
+            <p className="mt-1 text-sm text-slate-400">{a.name ?? a.ticker}</p>
             <p className="mt-1 text-xs text-slate-500">
-              {a.exchange} · {a.sector} · {a.industry} · as-of{" "}
-              {fmtDateTime(asset.meta.as_of)} UTC
+              {a.exchange ?? "—"} · {a.sector ?? "—"} · {a.industry ?? "—"} ·
+              as-of {fmtDateTime(asset.meta.as_of)} UTC
             </p>
           </div>
           <div className="text-right">
             <p className="font-mono text-3xl font-bold text-white">
-              ${a.price.toFixed(2)}
+              {usd2(a.price)}
             </p>
             <p className={`text-sm ${chgUp ? "text-emerald-300" : "text-rose-300"}`}>
-              {chgUp ? "+" : ""}
-              {chg.toFixed(2)} ({ret1(a.change_pct)})
+              {chg === null
+                ? "—"
+                : `${chg >= 0 ? "+" : ""}${chg.toFixed(2)} (${retPct1(
+                    a.change_pct
+                  )})`}
             </p>
             <p className="mt-1 text-xs text-slate-500">
-              Mkt cap {money((a as any).market_cap ?? (a as any).mkt_cap)}
+              Mkt cap {money(a.market_cap ?? a.mkt_cap)}
             </p>
           </div>
         </div>
@@ -163,6 +203,7 @@ export default async function StockPage({
             title="AI score — 20 day horizon"
             subtitle={`Model ${p20.model_version} · regime ${p20.regime}`}
           >
+            {prov.demo && <SyntheticTag className="mb-3" />}
             <div className="mb-5 flex items-center gap-5">
               <div className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-bronze-500">
                 <span className="font-mono text-3xl font-bold text-white">
@@ -208,6 +249,7 @@ export default async function StockPage({
             subtitle="Close with MA 50 / MA 200 overlays"
             className="lg:col-span-2"
           >
+            {prov.demo && <SyntheticTag className="mb-2" />}
             <PriceChart
               bars={prices.data}
               band={band}
@@ -217,11 +259,25 @@ export default async function StockPage({
         </div>
       )}
 
+      {!p20 && (
+        <Card
+          title="AI score — 20 day horizon"
+          subtitle="No 20-day prediction record was returned for this ticker"
+        >
+          <p className="text-sm text-slate-500">
+            The API returned {preds.data.length} prediction record(s) for{" "}
+            {ticker}; nothing to display for the 20-day horizon.
+          </p>
+          {prov.demo && <SyntheticTag className="mt-3" />}
+        </Card>
+      )}
+
       {/* Multi-horizon table */}
       <Card
         title="Multi-horizon predictions"
         subtitle={`Locked records · ${preds.data[0]?.model_version ?? "—"} · as-of ${fmtDateTime(preds.meta.as_of)} UTC`}
       >
+        {prov.demo && <SyntheticTag className="mb-2" />}
         <Table
           head={[
             "Horizon",
@@ -252,10 +308,14 @@ export default async function StockPage({
               <Td className="font-mono text-white">{ret1(p.expected_return)}</Td>
               <Td className="font-mono text-slate-300">{pct(p.expected_vol)}</Td>
               <Td className="font-mono text-xs text-slate-400">
-                [{ret1(p.ci[0])}, {ret1(p.ci[1])}]
+                [{ret1(p.ci?.[0])}, {ret1(p.ci?.[1])}]
               </Td>
               <Td className="font-mono text-slate-300">
-                {ret1(-p.downside_risk)}
+                {ret1(
+                  typeof p.downside_risk === "number"
+                    ? -p.downside_risk
+                    : null
+                )}
               </Td>
               <Td className="font-mono text-slate-300">
                 {ret1(p.upside_potential)}
@@ -267,6 +327,13 @@ export default async function StockPage({
               <Td className="font-mono text-slate-300">{score0(p.confidence)}</Td>
             </tr>
           ))}
+          {preds.data.length === 0 && (
+            <tr>
+              <Td className="text-slate-500">
+                No prediction records returned by the API for {ticker}.
+              </Td>
+            </tr>
+          )}
         </Table>
         <p className="mt-4 text-xs italic text-slate-500">{DISCLAIMER}</p>
       </Card>
@@ -277,46 +344,59 @@ export default async function StockPage({
           title="Engine breakdown — 8 engines"
           subtitle={`${p20.pipeline === "live" ? "Live pipeline" : "Illustrative pipeline"} · ${p20.calibrated ? "calibrated (ARGUS-EQ-1.1 isotonic)" : "uncalibrated"} · as-of ${fmtDateTime(p20.as_of)} UTC`}
         >
+          {prov.demo && <SyntheticTag className="mb-2" />}
           <Table head={["Engine", "Signal", "Confidence", "Data status", "Note"]}>
-            {Object.entries(p20.engine_signals).map(([name, e]) => (
-              <tr key={name} className="hover:bg-ink-800/50">
-                <Td className="font-medium text-slate-200">{name}</Td>
-                <Td>
-                  <div className="flex items-center gap-2">
-                    <div className="h-1.5 w-20 overflow-hidden rounded-full bg-ink-700">
-                      <div
-                        className={`h-full rounded-full ${e.signal >= 0 ? "bg-emerald-500" : "bg-rose-500"}`}
-                        style={{
-                          width: `${Math.abs(e.signal) * 100}%`,
-                          marginLeft: e.signal >= 0 ? "50%" : `${50 - Math.abs(e.signal) * 50}%`,
-                        }}
-                      />
+            {Object.entries(p20.engine_signals).map(([name, e]) => {
+              const signal = typeof e?.signal === "number" ? e.signal : 0;
+              const confidence =
+                typeof e?.confidence === "number" ? e.confidence : null;
+              return (
+                <tr key={name} className="hover:bg-ink-800/50">
+                  <Td className="font-medium text-slate-200">{name}</Td>
+                  <Td>
+                    <div className="flex items-center gap-2">
+                      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-ink-700">
+                        <div
+                          className={`h-full rounded-full ${signal >= 0 ? "bg-emerald-500" : "bg-rose-500"}`}
+                          style={{
+                            width: `${Math.abs(signal) * 100}%`,
+                            marginLeft:
+                              signal >= 0
+                                ? "50%"
+                                : `${50 - Math.abs(signal) * 50}%`,
+                          }}
+                        />
+                      </div>
+                      <span
+                        className={`font-mono text-xs ${signal >= 0 ? "text-emerald-300" : "text-rose-300"}`}
+                      >
+                        {signal >= 0 ? "+" : ""}
+                        {signal.toFixed(2)}
+                      </span>
                     </div>
-                    <span
-                      className={`font-mono text-xs ${e.signal >= 0 ? "text-emerald-300" : "text-rose-300"}`}
+                  </Td>
+                  <Td className="font-mono text-slate-300">
+                    {score0(confidence === null ? null : confidence * 100)}
+                  </Td>
+                  <Td>
+                    <Badge
+                      tone={
+                        e?.data_status === "CONFIRMED"
+                          ? "bull"
+                          : e?.data_status === "MISSING"
+                            ? "bear"
+                            : "neutral"
+                      }
                     >
-                      {e.signal >= 0 ? "+" : ""}
-                      {e.signal.toFixed(2)}
-                    </span>
-                  </div>
-                </Td>
-                <Td className="font-mono text-slate-300">{score0(e.confidence * 100)}</Td>
-                <Td>
-                  <Badge
-                    tone={
-                      e.data_status === "CONFIRMED"
-                        ? "bull"
-                        : e.data_status === "MISSING"
-                          ? "bear"
-                          : "neutral"
-                    }
-                  >
-                    {e.data_status}
-                  </Badge>
-                </Td>
-                <Td className="max-w-md text-xs text-slate-500">{e.note || "—"}</Td>
-              </tr>
-            ))}
+                      {e?.data_status ?? "UNKNOWN"}
+                    </Badge>
+                  </Td>
+                  <Td className="max-w-md text-xs text-slate-500">
+                    {e?.note || "—"}
+                  </Td>
+                </tr>
+              );
+            })}
           </Table>
           <p className="mt-4 text-xs text-slate-500">
             A/B/H feed the calibrated probability via pinned ARGUS-EQ-1.1
@@ -336,22 +416,22 @@ export default async function StockPage({
           <div className="grid gap-6 md:grid-cols-3">
             <ExplanationList
               title="Reasons (bullish evidence)"
-              items={p20.explanation.reasons}
+              items={p20.explanation?.reasons ?? []}
               tone="reasons"
             />
             <ExplanationList
               title="Risks (devil's advocate)"
-              items={p20.explanation.risks}
+              items={p20.explanation?.risks ?? []}
               tone="risks"
             />
             <ExplanationList
               title="Invalidated if"
-              items={p20.explanation.invalidated_if}
+              items={p20.explanation?.invalidated_if ?? []}
               tone="invalid"
             />
           </div>
           <p className="mt-5 border-t border-ink-800 pt-4 text-xs italic text-slate-500">
-            {p20.disclaimer}
+            {p20.disclaimer || DISCLAIMER}
           </p>
         </Card>
       )}

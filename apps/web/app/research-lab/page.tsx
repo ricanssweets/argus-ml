@@ -4,7 +4,13 @@ import { useState } from "react";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { DemoBadge } from "@/components/DemoBadge";
+import {
+  DataErrorBanner,
+  DemoBadge,
+  SyntheticTag,
+  provenanceOf,
+  type Provenance,
+} from "@/components/DemoBadge";
 import { DISCLAIMER } from "@/lib/format";
 import type { ResearchAnswer } from "@/lib/types";
 
@@ -18,8 +24,7 @@ const EXAMPLES = [
 export default function ResearchLabPage() {
   const [q, setQ] = useState("");
   const [answer, setAnswer] = useState<ResearchAnswer | null>(null);
-  const [demo, setDemo] = useState(false);
-  const [asOf, setAsOf] = useState("");
+  const [prov, setProv] = useState<Provenance | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function ask(question: string) {
@@ -30,8 +35,7 @@ export default function ResearchLabPage() {
     try {
       const env = await api.askResearch(qq);
       setAnswer(env.data);
-      setDemo(!!env.meta.demo);
-      setAsOf(env.meta.as_of);
+      setProv(provenanceOf(env.meta));
     } finally {
       setLoading(false);
     }
@@ -46,8 +50,10 @@ export default function ResearchLabPage() {
             Answers only from platform data — every number cites a stored record
           </p>
         </div>
-        {demo && <DemoBadge asOf={asOf} />}
+        {prov?.demo && <DemoBadge asOf={prov.asOf} error={prov.error} />}
       </div>
+
+      <DataErrorBanner error={prov?.error} empty={prov?.empty && !prov?.demo} />
 
       <Card title="Ask" subtitle="Deterministic query planner over predictions, backtests and observatory tables">
         <div className="flex gap-3">
@@ -81,6 +87,7 @@ export default function ResearchLabPage() {
 
       {answer && (
         <Card title="Answer" subtitle={`Status ${answer.data_status}`}>
+          {prov?.demo && <SyntheticTag className="mb-2" />}
           <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-200">
             {answer.answer}
           </p>

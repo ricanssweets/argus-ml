@@ -4,8 +4,22 @@ import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, Td } from "@/components/ui/table";
-import { DemoBadge } from "@/components/DemoBadge";
-import { DISCLAIMER, fmtDateTime, pct, ret1, score0 } from "@/lib/format";
+import {
+  DataErrorBanner,
+  DemoBadge,
+  SyntheticTag,
+  provenanceOf,
+} from "@/components/DemoBadge";
+import {
+  DISCLAIMER,
+  count0,
+  fmtDateTime,
+  metric3,
+  pct,
+  ratio1,
+  ret1,
+  score0,
+} from "@/lib/format";
 
 function regimeTone(regime: string) {
   const r = regime.toLowerCase();
@@ -21,10 +35,15 @@ export default async function DashboardPage() {
     api.getModels(),
     api.getLockedToday(),
   ]);
-  const isDemo =
-    regime.meta.demo || scanner.meta.demo || locked.meta.demo;
+  const prov = provenanceOf(
+    regime.meta,
+    scanner.meta,
+    models.meta,
+    locked.meta
+  );
 
-  const champion = models.data.find((m) => m.status === "CHAMPION");
+  const champion =
+    models.data.find((m) => m.status === "CHAMPION") ?? models.data[0];
 
   return (
     <div className="space-y-6">
@@ -41,8 +60,10 @@ export default async function DashboardPage() {
             {regime.meta.data_status}
           </p>
         </div>
-        {isDemo && <DemoBadge asOf={regime.meta.as_of} />}
+        {prov.demo && <DemoBadge asOf={prov.asOf} error={prov.error} />}
       </div>
+
+      <DataErrorBanner error={prov.error} empty={prov.empty && !prov.demo} />
 
       {/* Market regime banner */}
       <Card>
@@ -61,15 +82,18 @@ export default async function DashboardPage() {
               </p>
             </div>
           </div>
-          <Link
-            href="/market-regime"
-            className="text-sm font-medium text-bronze-400 hover:text-bronze-300"
-          >
-            Regime detail →
-          </Link>
+          <div className="flex items-center gap-3">
+            {prov.demo && <SyntheticTag />}
+            <Link
+              href="/market-regime"
+              className="text-sm font-medium text-bronze-400 hover:text-bronze-300"
+            >
+              Regime detail →
+            </Link>
+          </div>
         </div>
         <ul className="mt-4 grid gap-2 md:grid-cols-2">
-          {regime.data.drivers.map((d, i) => (
+          {(regime.data.drivers ?? []).map((d, i) => (
             <li key={i} className="text-sm text-slate-400">
               <span className="mr-2 text-bronze-400">▸</span>
               {d}
@@ -93,6 +117,7 @@ export default async function DashboardPage() {
             </Link>
           }
         >
+          {prov.demo && <SyntheticTag className="mb-2" />}
           <Table
             head={[
               "Ticker",
@@ -103,7 +128,7 @@ export default async function DashboardPage() {
               "R/R",
             ]}
           >
-            {scanner.data.map((s: any) => (
+            {scanner.data.map((s) => (
               <tr key={s.ticker} className="hover:bg-ink-800/50">
                 <Td>
                   <Link
@@ -112,21 +137,28 @@ export default async function DashboardPage() {
                   >
                     {s.ticker}
                   </Link>
-                  <p className="text-xs text-slate-500">{s.name ?? s.ticker}</p>
+                  <p className="text-xs text-slate-500">
+                    {s.name || s.ticker}
+                  </p>
                 </Td>
                 <Td className="font-mono text-xs text-slate-400">
-                  {(s.setup ?? s.setup_tags?.[0] ?? "—").replaceAll("_", " ")}
+                  {(s.setup || "—").replaceAll("_", " ")}
                 </Td>
                 <Td className="font-semibold text-white">
-                  {score0(s.score ?? s.composite_score ?? 0)}
+                  {score0(s.score)}
                 </Td>
                 <Td className="text-emerald-300">{pct(s.p_positive)}</Td>
                 <Td className="text-slate-200">{ret1(s.expected_return)}</Td>
-                <Td className="text-slate-200">
-                  {(Math.round(s.risk_reward * 10) / 10).toFixed(1)}x
-                </Td>
+                <Td className="text-slate-200">{ratio1(s.risk_reward)}</Td>
               </tr>
             ))}
+            {scanner.data.length === 0 && (
+              <tr>
+                <Td className="text-slate-500">
+                  No scanner rows returned by the API.
+                </Td>
+              </tr>
+            )}
           </Table>
         </Card>
 
@@ -144,37 +176,50 @@ export default async function DashboardPage() {
           }
         >
           {champion ? (
-            <dl className="space-y-3">
-              {[
-                ["Brier score (20d)", champion.brier.toFixed(3), "target < 0.22"],
-                ["ROC-AUC (20d)", champion.roc_auc.toFixed(3), "target > 0.56"],
-                [
-                  "Calibration error",
-                  champion.cal_error.toFixed(3),
-                  "target < 0.04",
-                ],
-                [
-                  "OOS samples",
-                  champion.n.toLocaleString(),
-                  "min 100 per claim",
-                ],
-              ].map(([label, value, target]) => (
-                <div
-                  key={label as string}
-                  className="flex items-center justify-between border-b border-ink-800 pb-2.5 last:border-0"
-                >
-                  <div>
-                    <dt className="text-sm text-slate-300">{label}</dt>
-                    <dd className="text-xs text-slate-500">{target}</dd>
+            <>
+              {prov.demo && <SyntheticTag className="mb-2" />}
+              <dl className="space-y-3">
+                {[
+                  [
+                    "Brier score (20d)",
+                    metric3(champion.brier),
+                    "target < 0.22",
+                  ],
+                  [
+                    "ROC-AUC (20d)",
+                    metric3(champion.roc_auc),
+                    "target > 0.56",
+                  ],
+                  [
+                    "Calibration error",
+                    metric3(champion.cal_error),
+                    "target < 0.04",
+                  ],
+                  [
+                    "OOS samples",
+                    count0(champion.n),
+                    "min 100 per claim",
+                  ],
+                ].map(([label, value, target]) => (
+                  <div
+                    key={label as string}
+                    className="flex items-center justify-between border-b border-ink-800 pb-2.5 last:border-0"
+                  >
+                    <div>
+                      <dt className="text-sm text-slate-300">{label}</dt>
+                      <dd className="text-xs text-slate-500">{target}</dd>
+                    </div>
+                    <span className="font-mono text-lg font-semibold text-white">
+                      {value}
+                    </span>
                   </div>
-                  <span className="font-mono text-lg font-semibold text-white">
-                    {value}
-                  </span>
-                </div>
-              ))}
-            </dl>
+                ))}
+              </dl>
+            </>
           ) : (
-            <p className="text-sm text-slate-500">No champion model found.</p>
+            <p className="text-sm text-slate-500">
+              No champion model found in the API registry.
+            </p>
           )}
         </Card>
       </div>
@@ -192,6 +237,7 @@ export default async function DashboardPage() {
           </Link>
         }
       >
+        {prov.demo && <SyntheticTag className="mb-2" />}
         <Table
           head={[
             "Ticker",
@@ -225,6 +271,13 @@ export default async function DashboardPage() {
               </Td>
             </tr>
           ))}
+          {locked.data.length === 0 && (
+            <tr>
+              <Td className="text-slate-500">
+                No locked predictions returned by the API.
+              </Td>
+            </tr>
+          )}
         </Table>
         <p className="mt-4 text-xs italic text-slate-500">{DISCLAIMER}</p>
       </Card>
