@@ -1,4 +1,7 @@
 export const dynamic = "force-static";
+// Revalidate hourly so the served page refreshes from the API instead of
+// showing the build-time snapshot forever (see apps/web/app/page.tsx).
+export const revalidate = 3600;
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { api } from "@/lib/api";

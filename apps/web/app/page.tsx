@@ -1,4 +1,8 @@
 export const dynamic = "force-static";
+// Revalidate hourly so the served page refreshes from the API instead of
+// showing the build-time snapshot forever (that snapshot was the Oct 5 demo:
+// the build-time fetch timed out and force-static froze the fallback in).
+export const revalidate = 3600;
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
