@@ -38,10 +38,15 @@ export const API_CONFIG_ERROR: DataError | null = API_BASE
 /**
  * Cold-starting free-tier backends routinely need more than a few seconds.
  * 2,500 ms produced timeouts that were indistinguishable from "no data";
- * 12,000 ms is the default and can be overridden per deployment.
+ * 12,000 ms was the default, but the dashboard's slowest call
+ * (GET /predictions?horizon=20&min_score=50) runs the live quant pipeline
+ * for the whole universe and measures 18-26 s against the Render free tier,
+ * so even 12 s timed out and the public site fell back to the Oct 5 demo
+ * snapshot at build time. 60,000 ms covers that call with headroom and can
+ * still be overridden per deployment.
  */
 const rawTimeout = Number(process.env.NEXT_PUBLIC_ARGUS_TIMEOUT_MS ?? "");
 export const TIMEOUT_MS =
   Number.isFinite(rawTimeout) && rawTimeout >= 1000 && rawTimeout <= 120000
     ? rawTimeout
-    : 12000;
+    : 60000;
