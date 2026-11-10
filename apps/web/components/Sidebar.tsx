@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { LogoLockup } from "./Logo";
+import { InstallAppButton } from "./InstallAppButton";
 
 const NAV: { href: string; label: string }[] = [
   { href: "/", label: "Dashboard" },
@@ -97,6 +98,9 @@ export function Sidebar() {
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <NavList />
         </nav>
+        <div className="px-3 pb-3">
+          <InstallAppButton />
+        </div>
         <EngineFooter />
       </aside>
 
@@ -128,6 +132,9 @@ export function Sidebar() {
             <nav className="flex-1 overflow-y-auto px-3 py-4">
               <NavList onNavigate={() => setOpen(false)} />
             </nav>
+            <div className="px-3 pb-3">
+              <InstallAppButton />
+            </div>
             <EngineFooter />
           </aside>
         </div>
