@@ -10,7 +10,7 @@ export function Table({
   className?: string;
 }) {
   return (
-    <div className={`overflow-x-auto ${className}`}>
+    <div className={`w-full min-w-0 max-w-full overflow-x-auto ${className}`}>
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-ink-700 text-left text-[11px] uppercase tracking-wider text-slate-500">
