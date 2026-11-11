@@ -46,8 +46,8 @@ export default function RootLayout({
     >
       <body className="bg-ink-950 font-body text-slate-200 antialiased">
         <Sidebar />
-        <main className="min-h-screen lg:ml-60">
-          <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:py-6">
+        <main className="min-h-screen min-w-0 lg:ml-60">
+          <div className="mx-auto min-w-0 w-full max-w-7xl px-4 py-5 sm:px-6 lg:py-6">
             {children}
           </div>
         </main>

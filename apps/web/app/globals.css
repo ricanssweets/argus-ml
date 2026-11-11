@@ -6,8 +6,24 @@
   color-scheme: dark;
 }
 
+/* No sideways page scroll on mobile: wide tables/charts must scroll
+   inside their own card, never push the whole page sideways. `clip`
+   (not `hidden`) keeps sticky headers working. */
+html,
+body {
+  overflow-x: clip;
+}
+
 body {
   font-feature-settings: "tnum" 1, "cv05" 1;
+  overscroll-behavior-x: none;
+}
+
+/* Grid children must be allowed to shrink below their content width,
+   otherwise a wide table/chart forces its grid track (and the whole
+   page) wider than the phone screen. */
+.grid > * {
+  min-width: 0;
 }
 
 .font-display {
